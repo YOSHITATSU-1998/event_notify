@@ -15,6 +15,7 @@ VENUES: List[Tuple[str, str]] = [
     ("b", "マリンメッセB館"),
     ("c", "福岡国際センター"),
     ("d", "福岡国際会議場"),
+    ("e", "福岡サンパレス"),
 ]
 CODE_INDEX: Dict[str, int] = {c: i for i, (c, _) in enumerate(VENUES)}
 CODE2NAME: Dict[str, str] = {c: n for c, n in VENUES}
@@ -186,4 +187,5 @@ def main() -> None:
         save_body_hash(body)
 
 if __name__ == "__main__":
+
     main()
