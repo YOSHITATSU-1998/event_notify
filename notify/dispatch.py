@@ -1,12 +1,21 @@
-# notify/dispatch.py ぢすぱーち君（環境変数版・UTF-8保存）
+# notify/dispatch.py Ver.1.3対応版（PayPayドーム追加・通知フィルター対応）
 import os
 import json
 import hashlib
+import sys
 from datetime import datetime, timezone, timedelta
 from typing import List, Tuple, Dict, Any
+from pathlib import Path
 import requests
 
-from event_notify.utils.paths import STORAGE_DIR
+# パス解決
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from utils.paths import STORAGE_DIR
+except ImportError:
+    # STORAGE_DIRを直接定義
+    STORAGE_DIR = Path(__file__).parent.parent / "storage"
+    STORAGE_DIR.mkdir(exist_ok=True)
 
 # --- 設定 ---------------------------------------------------------------
 JST = timezone(timedelta(hours=9))
@@ -16,6 +25,7 @@ VENUES: List[Tuple[str, str]] = [
     ("c", "福岡国際センター"),
     ("d", "福岡国際会議場"),
     ("e", "福岡サンパレス"),
+    ("f", "みずほPayPayドーム"),  # Ver.1.3追加
 ]
 CODE_INDEX: Dict[str, int] = {c: i for i, (c, _) in enumerate(VENUES)}
 CODE2NAME: Dict[str, str] = {c: n for c, n in VENUES}
@@ -30,6 +40,10 @@ def get_webhook_urls():
         print("[dispatch][WARN] SLACK_WEBHOOK_URL not set")
     
     return slack_url, line_token
+
+def get_github_pages_url():
+    """GitHub Pages URLを取得（環境変数から）"""
+    return os.getenv("GITHUB_PAGES_URL", "")
 
 # --- ユーティリティ ------------------------------------------------------
 def determine_today() -> str:
@@ -77,6 +91,13 @@ def load_events_for(today: str) -> tuple[list[Dict[str, Any]], list[str]]:
                 continue
             if date != today:
                 continue
+            
+            # Ver.1.3: PayPayドーム用通知フィルター
+            # for_notification が false の場合は通知対象外（試合終了など）
+            if obj.get("for_notification") == False:
+                print(f"[dispatch] Skipping non-notification event: {title}")
+                continue
+            
             ev = {
                 "date": date,
                 "time": obj.get("time"),
@@ -85,6 +106,8 @@ def load_events_for(today: str) -> tuple[list[Dict[str, Any]], list[str]]:
                 "source": obj.get("source"),
                 "hash": obj.get("hash"),
                 "code": code,
+                "game_status": obj.get("game_status"),  # PayPayドーム用
+                "score": obj.get("score"),  # PayPayドーム用
             }
             all_ev.append(ev)
 
@@ -101,7 +124,7 @@ def load_events_for(today: str) -> tuple[list[Dict[str, Any]], list[str]]:
     return uniq, missing
 
 # --- 整形 ---------------------------------------------------------------
-def format_message(today: str, events: list[Dict[str, Any]], missing: list[str]) -> str:
+def format_message(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
     lines: list[str] = [f"【本日のイベント】{today}"]
 
     if not events:
@@ -112,7 +135,12 @@ def format_message(today: str, events: list[Dict[str, Any]], missing: list[str])
             lines.append(f"- {t}｜{ev.get('title','')}（{ev.get('venue','')}）")
 
     if missing:
-        lines.append("取得できなかった会場: " + ", ".join(missing))
+        missing_names = [CODE2NAME.get(code, code) for code in missing]
+        lines.append("取得できなかった会場: " + ", ".join(missing_names))
+
+    # Ver.1.3: Web URL追加
+    if pages_url:
+        lines.append(f"詳細: {pages_url}")
 
     return "\n".join(lines)
 
@@ -160,19 +188,29 @@ def send_to_line(text: str, line_token: str) -> bool:
         return False
 
 # --- build_message 関数（Web出力と共用） ----------------------------------
-def build_message(today: str, events: list[Dict[str, Any]], missing: list[str]) -> str:
-    """Slack通知とWeb出力で共用する純関数"""
-    return format_message(today, events, missing)
+def build_message(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
+    """Slack通知とWeb出力で共用する純関数（Ver.1.3: Web URL対応）"""
+    return format_message(today, events, missing, pages_url)
 
 # --- main ----------------------------------------------------------------
 def main() -> None:
-    print("[dispatch] start")
+    print("[dispatch] start Ver.1.3")
     today = determine_today()
     events, missing = load_events_for(today)
     print(f"[dispatch] gathered items={len(events)} missing={missing}")
 
-    body = build_message(today, events, missing)
+    # GitHub Pages URL取得
+    pages_url = get_github_pages_url()
+    if pages_url:
+        print(f"[dispatch] pages_url={pages_url}")
+
+    body = build_message(today, events, missing, pages_url)
     print("[dispatch] preview:\n" + body)
+
+    # DRY_RUN チェック
+    if os.getenv("DRY_RUN") == "1":
+        print("[dispatch] DRY_RUN mode - not sending")
+        return
 
     # ★ 環境変数から取得
     slack_url, line_token = get_webhook_urls()
@@ -182,10 +220,9 @@ def main() -> None:
     sent = send_to_slack(body, slack_url) or sent
     sent = send_to_line(body, line_token) or sent
 
-    print(f"[dispatch] sent={sent}")
+    print(f"[dispatch] sent={sent} venues={len(VENUES)}")
     if sent:
         save_body_hash(body)
 
 if __name__ == "__main__":
-
     main()
