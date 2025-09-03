@@ -1,9 +1,9 @@
-name: Daily Scraper & Dispatch
+name: Daily Scraper & Dispatch Ver.1.3
 
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: '0 21 * * *'   # JST 06:00 (修正: * * * → * * *)
+    - cron: '0 21 * * *'   # JST 06:00
 
 jobs:
   run-daily:
@@ -14,14 +14,14 @@ jobs:
       id-token: write
     env:
       TZ: Asia/Tokyo
-      PYTHONPATH: ${{ github.workspace }}/..  # 一階層上を指定
+      PYTHONPATH: ${{ github.workspace }}/..
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
     
     steps:
       - uses: actions/checkout@v4
         with:
-          path: event_notify  # event_notify ディレクトリとしてチェックアウト
+          path: event_notify
       
       - uses: actions/setup-python@v5
         with:
@@ -31,6 +31,11 @@ jobs:
         run: |
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
+      
+      - name: Install Playwright (Ver.1.3)
+        run: |
+          pip install playwright>=1.40.0
+          playwright install chromium
       
       - name: Ensure __init__.py files
         run: |
@@ -49,7 +54,7 @@ jobs:
           python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers
+      - name: Run scrapers (6 venues)
         run: |
           set -e
           python -m event_notify.scrapers.marinemesse_a
@@ -57,6 +62,7 @@ jobs:
           python -m event_notify.scrapers.kokusai_center
           python -m event_notify.scrapers.congress_b
           python -m event_notify.scrapers.sunpalace
+          python -m event_notify.scrapers.paypay_dome
       
       - name: Generate HTML for web
         run: |
@@ -79,3 +85,5 @@ jobs:
         run: |
           set -e
           python -m event_notify.notify.dispatch
+        env:
+          GITHUB_PAGES_URL: ${{ steps.deployment.outputs.page_url }}
