@@ -1,4 +1,4 @@
-﻿# scrapers/congress_b.py
+# scrapers/congress_b.py
 # 福岡国際会議場（思い出ネーム: コングレスB）
 # 出力：storage/{date}_d.json（schema_version=1.0）
 # 既定は「JSTの今日」だけを書き出す。検証用に環境変数で切替可。
@@ -18,6 +18,15 @@ import requests
 from requests.adapters import HTTPAdapter, Retry
 from bs4 import BeautifulSoup
 
+# 🔥 parser.py をインポート
+try:
+    from utils.parser import split_and_normalize
+except ImportError:
+    # モジュールパス問題の場合のフォールバック
+    import sys
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from utils.parser import split_and_normalize
+
 # ========= META =========
 META = {
     "name": "congress_b",
@@ -25,8 +34,8 @@ META = {
     "code": "d",
     "url_candidates": [
         "https://www.marinemesse.or.jp/congress/event/",
-        "https://www.marinemesse.or.jp/congress/schedule/",
-        "https://www.marinemesse.or.jp/congress/",
+        #"https://www.marinemesse.or.jp/congress/schedule/",
+        #"https://www.marinemesse.or.jp/congress/",
     ],
     "schema_version": "1.0",
     "selector_profile": "primary: table that has headers 各列『日時/イベント名/主催者』 / alt: any table with similar header",
@@ -49,8 +58,8 @@ def _split_and_normalize(s: str) -> str:
     if not s:
         return ""
     s = (
-        s.replace("”", '"').replace("“", '"')
-         .replace("’", "'").replace("‘", "'")
+        s.replace(""", '"').replace(""", '"')
+         .replace("'", "'").replace("'", "'")
          .replace("〜", "～").replace("―", "－")
     )
     s = re.sub(r"\s+", " ", s).strip()
@@ -111,61 +120,6 @@ def _fetch_html(url: str, sess: requests.Session, timeout: float = 20.0) -> Opti
         pass
     return None
 
-# ========= 日付・時刻 正規化と展開 =========
-_DATE_WITH_YEAR = re.compile(r"(?P<y>\d{4})[./-](?P<m>\d{1,2})[./-](?P<d>\d{1,2})")
-_DATE_MD = re.compile(r"(?P<m>\d{1,2})[./-](?P<d>\d{1,2})")
-_TIME = re.compile(r"(?P<h>\d{1,2}):(?P<mi>\d{2})")
-
-def _yyyy_mm_dd(s: str, base_year: int) -> Optional[str]:
-    s = s.strip()
-    m = _DATE_WITH_YEAR.search(s)
-    if m:
-        y, mo, d = int(m.group("y")), int(m.group("m")), int(m.group("d"))
-        try:
-            return f"{y:04d}-{mo:02d}-{d:02d}"
-        except ValueError:
-            return None
-    m = _DATE_MD.search(s)
-    if m:
-        mo, d = int(m.group("m")), int(m.group("d"))
-        try:
-            return f"{base_year:04d}-{mo:02d}-{d:02d}"
-        except ValueError:
-            return None
-    return None
-
-def _expand_date_range(s: str, base_year: int) -> List[str]:
-    s = s.replace("～", "-").replace("－", "-").replace("—", "-").replace("–", "-")
-    start = _yyyy_mm_dd(s, base_year)
-    if not start:
-        return []
-    m = re.search(r"-\s*([0-9./-]+)", s)
-    if not m:
-        return [start]
-    end_raw = m.group(1)
-    end = _yyyy_mm_dd(end_raw, base_year)
-    if not end:
-        return [start]
-    ys, ms, ds = map(int, start.split("-"))
-    ye, me, de = map(int, end.split("-"))
-    dates: List[str] = []
-    cur = datetime(ys, ms, ds, tzinfo=JST)
-    end_dt = datetime(ye, me, de, tzinfo=JST)
-    while cur <= end_dt:
-        dates.append(cur.strftime("%Y-%m-%d"))
-        cur += timedelta(days=1)
-    return dates
-
-def _extract_times(s: str) -> List[str]:
-    s = s.replace("／", "/").replace("・", "/").replace("｜", "/").replace("|", "/")
-    times = []
-    for h, mi in _TIME.findall(s):
-        try:
-            times.append(f"{int(h):02d}:{int(mi):02d}")
-        except Exception:
-            continue
-    return sorted(set(times))
-
 # ========= パース =========
 def _find_event_table(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
     for t in soup.find_all("table"):
@@ -196,41 +150,37 @@ def _parse_table(table: BeautifulSoup) -> List[Dict[str, str]]:
         events.append({"when": when_raw, "title": title_raw, "link": link or META["url_candidates"][0]})
     return events
 
+# 🔥 新しい _materialize_events - parser.py を使用
 def _materialize_events(rows: List[Dict[str, str]]) -> List[Dict]:
     base_year = datetime.now(JST).year
     out: List[Dict] = []
+    
     for r in rows:
         when = r["when"]
         title = r["title"]
         source = r["link"]
-        dates = _expand_date_range(when, base_year)
-        if not dates:
-            d = _yyyy_mm_dd(when, base_year)
-            dates = [d] if d else []
-        if not dates:
-            continue
-        times = _extract_times(when)
-        if not times:
-            for d in dates:
-                out.append({
-                    "schema_version": META["schema_version"],
-                    "date": d,
-                    "title": title,
-                    "venue": META["venue"],
-                    "source": source,
-                    "notes": when,
-                })
-        else:
-            for d in dates:
-                for t in times:
-                    out.append({
-                        "schema_version": META["schema_version"],
-                        "date": d,
-                        "time": t,
-                        "title": title,
-                        "venue": META["venue"],
-                        "source": source,
-                    })
+        
+        # 🎯 parser.py の split_and_normalize を使用
+        parsed_events = split_and_normalize(when, title, META["venue"], base_year)
+        
+        for ev in parsed_events:
+            item = {
+                "schema_version": META["schema_version"],
+                "date": ev["date"],
+                "title": ev["title"],
+                "venue": ev["venue"],
+                "source": source,
+            }
+            
+            # 時刻があれば追加
+            if ev.get("time"):
+                item["time"] = ev["time"]
+            else:
+                # 時刻未定の場合、元の文字列をnotesに保存
+                item["notes"] = when
+                
+            out.append(item)
+    
     return out
 
 def _dedupe_and_hash(items: List[Dict]) -> List[Dict]:
@@ -296,7 +246,7 @@ def main():
             break
         time.sleep(1.2)  # polite
 
-    # 収集すらゼロ（HTML取れない/テーブル見つからない等）は“失敗扱い”で非生成
+    # 収集すらゼロ（HTML取れない/テーブル見つからない等）は"失敗扱い"で非生成
     if collected == [] and len(tried_urls) == len(META["url_candidates"]):
         elapsed_ms = int((time.time() - t0) * 1000)
         print(f"[{META['name']}][ERROR] msg=\"no events parsed\" tried={len(tried_urls)} ms={elapsed_ms}")
