@@ -1,4 +1,4 @@
-# notify/html_export.py Ver.1.3対応版（会場一覧付きHTML生成）
+# notify/html_export.py Ver.1.4対応版（会場リンク化・意見箱追加）
 import os
 import sys
 from datetime import datetime
@@ -25,22 +25,56 @@ except ImportError:
         ("d", "福岡国際会議場"),
         ("e", "福岡サンパレス"),
         ("f", "みずほPayPayドーム"),
-        ("f_event", "みずほPayPayドーム（イベント）"),  # 1.4実装
+        ("f_event", "みずほPayPayドーム（イベント）"),  
     ]
+
+# 会場リンクマッピング
+VENUE_LINKS = {
+    "マリンメッセA館": "https://www.marinemesse.or.jp/messe/event/",
+    "マリンメッセB館": "https://www.marinemesse.or.jp/messe-b/event/",
+    "福岡国際センター": "https://www.marinemesse.or.jp/kokusai/event/",
+    "福岡国際会議場": "https://www.marinemesse.or.jp/congress/event/",
+    "福岡サンパレス": "https://www.f-sunpalace.com/hall/#hallEvent",
+    "みずほPayPayドーム": "https://www.softbankhawks.co.jp/"
+}
+
+# Google Forms URL
+OPINION_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfX2EtHu3hZ2FgMfUjSOx1YYQqt2BaB3BGniVPF5TMCtgLByw/viewform"
 
 # サイトディレクトリ
 SITE_DIR = Path(__file__).parent.parent / "site"
 SITE_DIR.mkdir(exist_ok=True)
 
 def generate_venue_list() -> str:
-    """VENUES配列から会場一覧HTMLを生成"""
-    lines = ["【現在の対応会場】"]
+    """VENUES配列から会場一覧HTMLを生成（リンク化・PayPayドーム統合）"""
+    # PayPayドーム重複削除
+    unique_venues = []
+    seen_venues = set()
+    
     for code, name in VENUES:
-        lines.append(f"・{name}")
+        # PayPayドーム系は統合
+        if "みずほPayPayドーム" in name:
+            if "みずほPayPayドーム" not in seen_venues:
+                unique_venues.append("みずほPayPayドーム")
+                seen_venues.add("みずほPayPayドーム")
+        else:
+            if name not in seen_venues:
+                unique_venues.append(name)
+                seen_venues.add(name)
+    
+    # リンク化してHTML生成
+    lines = ["【現在の対応会場】"]
+    for venue_name in unique_venues:
+        if venue_name in VENUE_LINKS:
+            url = VENUE_LINKS[venue_name]
+            lines.append(f'・<a href="{url}" target="_blank" class="venue-link">{venue_name}</a>')
+        else:
+            lines.append(f"・{venue_name}")
+    
     return "\n".join(lines)
 
 def create_html_content(today: str, event_message: str, venue_list: str) -> str:
-    """HTML全体を生成"""
+    """HTML全体を生成（意見箱セクション追加）"""
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     
     html = f"""<!DOCTYPE html>
@@ -97,6 +131,40 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             padding: 20px;
             border-radius: 5px;
             border-left: 4px solid #3498db;
+            margin-bottom: 30px;
+        }}
+        .venue-link {{
+            color: #2980b9;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }}
+        .venue-link:hover {{
+            color: #3498db;
+            text-decoration: underline;
+        }}
+        .opinion-section {{
+            background: #fff5cd;
+            padding: 20px;
+            border-radius: 5px;
+            border-left: 4px solid #f39c12;
+            text-align: center;
+            margin-bottom: 30px;
+        }}
+        .opinion-link {{
+            display: inline-block;
+            background: #f39c12;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            margin-top: 10px;
+        }}
+        .opinion-link:hover {{
+            background: #e67e22;
+            text-decoration: none;
         }}
         .footer {{
             text-align: center;
@@ -116,6 +184,10 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             pre {{
                 font-size: 13px;
             }}
+            .opinion-link {{
+                font-size: 14px;
+                padding: 10px 20px;
+            }}
         }}
     </style>
 </head>
@@ -132,9 +204,18 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             <pre>{venue_list}</pre>
         </div>
         
+        <div class="opinion-section">
+            <h3>ご意見・ご要望</h3>
+            <p>会場追加のご希望や情報漏れのご報告をお待ちしています</p>
+            <a href="{OPINION_FORM_URL}" target="_blank" class="opinion-link">ご意見・ご要望はこちら</a>
+            <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
+                ※ Googleアカウントが必要です
+            </p>
+        </div>
+        
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.1.3 - 6会場対応</p>
+            <p>Ver.1.4 - 7会場対応（意見箱機能追加）</p>
         </div>
     </div>
 </body>
@@ -144,7 +225,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
 def export_html():
     """HTMLファイルを生成してsite/index.htmlに保存"""
     try:
-        print("[html_export] Starting Ver.1.3 HTML generation...")
+        print("[html_export] Starting Ver.1.4 HTML generation...")
         
         # 今日の日付を取得
         today = determine_today()
@@ -178,9 +259,9 @@ def export_html():
         
         print(f"[html_export] Generated message: {len(event_message)} characters")
         
-        # 会場一覧を生成
+        # 会場一覧を生成（リンク化・統合処理）
         venue_list = generate_venue_list()
-        print(f"[html_export] Generated venue list: {len(VENUES)} venues")
+        print(f"[html_export] Generated venue list with links")
         
         # HTML全体を構築
         html_content = create_html_content(today, event_message, venue_list)
@@ -203,4 +284,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
