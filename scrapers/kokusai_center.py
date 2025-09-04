@@ -1,14 +1,18 @@
 # scrapers/kokusai_center.py
-import os, json, time, hashlib
+import os
+import json
+import time
+import hashlib
 from datetime import datetime
 from typing import List, Dict
+from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from event_notify.utils.parser import split_and_normalize, JST  # 正規化＆展開は共通関数に委譲
-from event_notify.utils.paths import STORAGE_DIR
 
 # ---- メタ情報（変更に強いヘッダ部） -----------------------------------------
 META = {
@@ -43,6 +47,13 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 DEBUG = os.getenv("DEBUG_IC", "0") == "1"
+
+def _storage_path(date_str: str, code: str) -> Path:
+    """共通のストレージパス生成（他のスクレイパーと統一）"""
+    root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
+    storage = root / "storage"
+    storage.mkdir(parents=True, exist_ok=True)
+    return storage / f"{date_str}_{code}.json"
 
 def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
@@ -180,8 +191,7 @@ def build_output(today_str: str, raw: List[Dict[str, str]]) -> List[Dict]:
 
 # ---- Save / Main -------------------------------------------------------------
 def _save(today_str: str, items: List[Dict]) -> str:
-    os.makedirs(STORAGE_DIR, exist_ok=True)
-    path = STORAGE_DIR / f"{today_str}_{META['venue_code']}.json"
+    path = _storage_path(today_str, META['venue_code'])
     with open(path, "w", encoding="utf-8") as f:
         json.dump(items, f, ensure_ascii=False, indent=2)
     return str(path)
