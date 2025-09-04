@@ -1,5 +1,8 @@
 # scrapers/marinemesse_b.py
-import os, json, time, re
+import os
+import json
+import time
+import re
 from datetime import datetime
 from typing import List, Dict, Any
 from pathlib import Path
@@ -39,6 +42,14 @@ DETAIL_REQUEST_SLEEP = 1.0  # マナー用の最小スリープ
 def sha1(s: str) -> str:
     import hashlib
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
+def _storage_path(date_str: str, code: str) -> Path:
+    """共通のストレージパス生成（congress_b.py / marinemesse_a.py と統一）"""
+    root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
+    storage = root / "storage"
+    storage.mkdir(parents=True, exist_ok=True)
+    return storage / f"{date_str}_{code}.json"
 
 
 def _http_get(url: str, session: requests.Session) -> requests.Response:
@@ -147,15 +158,6 @@ def _resolve_target_date() -> str:
     return datetime.now(JST).strftime("%Y-%m-%d")
 
 
-def _storage_dir() -> Path:
-    """
-    追記仕様16: 必ず repo直下の storage/ に出力する。
-    （このファイルは event_notify/scrapers/ 配下にある想定）
-    """
-    repo_root = Path(__file__).resolve().parents[1]  # event_notify/
-    return repo_root / "storage"
-
-
 def main():
     t0 = time.time()
     session = requests.Session()
@@ -192,10 +194,8 @@ def main():
             "extracted_at": extracted_at,
         })
 
-    # === 保存（追記仕様16に従い storage/直下に必ず保存。0件でも空配列 [] を保存） ===
-    storage_dir = _storage_dir()
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    path = storage_dir / f"{target_date}_{VENUE_CODE}.json"
+    # === 保存（共通のパス生成関数を使用） ===
+    path = _storage_path(target_date, VENUE_CODE)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
@@ -207,12 +207,10 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        # 失敗時も“壊れない”を優先し、空配列を書き出して可観測化（追記仕様の方針）
+        # 失敗時も"壊れない"を優先し、空配列を書き出して可観測化
         try:
             target_date = _resolve_target_date()
-            storage_dir = _storage_dir()
-            storage_dir.mkdir(parents=True, exist_ok=True)
-            path = storage_dir / f"{target_date}_{VENUE_CODE}.json"
+            path = _storage_path(target_date, VENUE_CODE)
             with open(path, "w", encoding="utf-8") as f:
                 json.dump([], f, ensure_ascii=False, indent=2)
             print(f"[marinemesse_b][ERROR] {repr(e)} -> wrote empty file {path}")
