@@ -8,12 +8,12 @@ import hashlib
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 from bs4 import BeautifulSoup
 
-from event_notify.utils.paths import STORAGE_DIR
+from event_notify.utils.parser import split_and_normalize, JST
 
 # --- 設定 ---------------------------------------------------------------
-JST = timezone(timedelta(hours=9))
 TARGET_URL = "https://www.f-sunpalace.com/hall/#hallEvent"
 VENUE_NAME = "福岡サンパレス"
 VENUE_CODE = "e"
@@ -22,6 +22,13 @@ HEADERS = {
 }
 
 # --- ユーティリティ ------------------------------------------------------
+def _storage_path(date_str: str, code: str) -> Path:
+    """共通のストレージパス生成（他のスクレイパーと統一）"""
+    root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
+    storage = root / "storage"
+    storage.mkdir(parents=True, exist_ok=True)
+    return storage / f"{date_str}_{code}.json"
+
 def determine_today() -> str:
     """環境変数または現在日時から対象日を決定"""
     override = os.getenv("SCRAPER_TARGET_DATE")
@@ -54,25 +61,7 @@ def create_hash(date: str, time: str, title: str, venue: str) -> str:
     key = f"{date}|{time or ''}|{normalize_text(title)}|{normalize_text(venue)}"
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
-# --- 日付処理 -----------------------------------------------------------
-def parse_sunpalace_date(date_str: str, target_year: int, target_month: int) -> Optional[str]:
-    """
-    サンパレス形式の日付を YYYY-MM-DD に変換
-    例: "5(土)" -> "2025-07-05"
-    """
-    if not date_str:
-        return None
-        
-    match = re.match(r'^(\d+)', date_str.strip())
-    if not match:
-        return None
-    
-    try:
-        day = int(match.group(1))
-        return f"{target_year:04d}-{target_month:02d}-{day:02d}"
-    except (ValueError, IndexError):
-        return None
-
+# --- 日付処理（parser.py対応版）-------------------------------------------
 def extract_month_from_header(header_text: str) -> Optional[int]:
     """
     ヘッダーテキストから月を抽出
@@ -92,22 +81,26 @@ def extract_month_from_header(header_text: str) -> Optional[int]:
     
     return None
 
-def extract_time(time_str: str) -> Optional[str]:
+def convert_sunpalace_date_format(date_str: str, month: int, year: int) -> str:
     """
-    時刻文字列から HH:MM 形式を抽出
+    サンパレス形式を parser.py が理解できる形式に変換
+    "5(土)" -> "7.5(土)" (月を補完)
     """
-    if not time_str:
-        return None
+    if not date_str:
+        return ""
         
-    # HH:MM パターンを探す
-    match = re.search(r'(\d{1,2}):(\d{2})', time_str)
+    # 既に月が含まれている場合はそのまま
+    if re.match(r'\d+\.\d+', date_str):
+        return date_str
+        
+    # 日付のみの場合は月を補完
+    match = re.match(r'^(\d+)(\([^)]+\))?', date_str.strip())
     if match:
-        hour = int(match.group(1))
-        minute = int(match.group(2))
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            return f"{hour:02d}:{minute:02d}"
+        day = match.group(1)
+        weekday = match.group(2) or ""
+        return f"{month}.{day}{weekday}"
     
-    return None
+    return date_str
 
 # --- スクレイピング -----------------------------------------------------
 def fetch_page() -> BeautifulSoup:
@@ -125,7 +118,7 @@ def fetch_page() -> BeautifulSoup:
         raise
 
 def extract_events_from_table(table, current_month: int, current_year: int) -> List[Dict[str, Any]]:
-    """テーブルからイベント情報を抽出"""
+    """テーブルからイベント情報を抽出（parser.py使用版）"""
     events = []
     
     rows = table.find_all('tr')
@@ -142,39 +135,44 @@ def extract_events_from_table(table, current_month: int, current_year: int) -> L
             open_time = cells[3].get_text(strip=True) if len(cells) > 3 and cells[3] else ""
             start_time = cells[4].get_text(strip=True) if len(cells) > 4 and cells[4] else ""
             
-            # 日付解析
-            parsed_date = parse_sunpalace_date(date_cell, current_year, current_month)
-            if not parsed_date:
-                continue
-                
             # イベント名チェック
             if not event_cell or len(event_cell.strip()) == 0:
                 continue
             
-            # 時刻解析（開演時刻を優先、なければ開場時刻）
-            event_time = extract_time(start_time) or extract_time(open_time)
+            # 日付を parser.py が理解できる形式に変換
+            converted_date = convert_sunpalace_date_format(date_cell, current_month, current_year)
             
-            # イベントオブジェクト作成
-            event = {
-                "schema_version": "1.0",
-                "date": parsed_date,
-                "time": event_time,
-                "title": normalize_text(event_cell),
-                "venue": VENUE_NAME,
-                "source": TARGET_URL,
-                "extracted_at": datetime.now(JST).isoformat(),
-            }
+            # 時刻情報も含めて datetime 文字列を構築
+            time_info = ""
+            if start_time:
+                time_info = f" {start_time}"
+            elif open_time:
+                time_info = f" {open_time}"
             
-            # ハッシュ生成
-            event["hash"] = create_hash(
-                event["date"],
-                event["time"] or "",
-                event["title"],
-                event["venue"]
-            )
+            datetime_str = f"{converted_date}{time_info}"
             
-            events.append(event)
+            # parser.py を使用して正規化・展開
+            parsed_events = split_and_normalize(datetime_str, event_cell, VENUE_NAME, current_year)
             
+            for parsed_event in parsed_events:
+                # メタデータ追加
+                event = {
+                    "schema_version": "1.0",
+                    **parsed_event,
+                    "source": TARGET_URL,
+                    "extracted_at": datetime.now(JST).isoformat(),
+                }
+                
+                # ハッシュ生成
+                event["hash"] = create_hash(
+                    event["date"],
+                    event.get("time", "") or "",
+                    event["title"],
+                    event["venue"]
+                )
+                
+                events.append(event)
+                
         except Exception as e:
             print(f"[sunpalace][WARN] Failed to parse row: {e}")
             continue
@@ -230,12 +228,9 @@ def filter_today_only(events: List[Dict[str, Any]], target_date: str) -> List[Di
 
 def save_to_storage(events: List[Dict[str, Any]], target_date: str) -> None:
     """ストレージにJSONとして保存"""
-    file_path = STORAGE_DIR / f"{target_date}_{VENUE_CODE}.json"
+    file_path = _storage_path(target_date, VENUE_CODE)
     
     try:
-        # ディレクトリ作成（既存実装と同様）
-        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-        
         # 整列（日付、時刻、タイトル順）
         events.sort(key=lambda x: (
             x.get("date", ""),
@@ -276,7 +271,7 @@ def main():
             events_today = filter_today_only(all_events, target_date)
             print(f"[sunpalace] filtered to {len(events_today)} events for {target_date}")
         
-        # 重複排除
+        # 重複排除（parser.pyで処理済みだが念のため）
         seen_hashes = set()
         unique_events = []
         for event in events_today:
