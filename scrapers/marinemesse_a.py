@@ -1,11 +1,17 @@
 # scrapers/marinemesse_a.py
-import os, json, time, re, unicodedata
+import os
+import json
+import time
+import re
+import unicodedata
 from datetime import datetime
 from typing import List, Dict
+from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
+
 from event_notify.utils.parser import split_and_normalize, JST
-from event_notify.utils.paths import STORAGE_DIR
 
 # ---- META / SELECTORS -------------------------------------------------------
 META = {
@@ -31,6 +37,13 @@ HEADERS = {
 }
 
 # ---- UTILS ------------------------------------------------------------------
+def _storage_path(date_str: str, code: str) -> Path:
+    """congress_b.py と同じ方式で storage パス生成"""
+    root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
+    storage = root / "storage"
+    storage.mkdir(parents=True, exist_ok=True)
+    return storage / f"{date_str}_{code}.json"
+
 def sha1(s: str) -> str:
     import hashlib
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
@@ -39,20 +52,20 @@ def _normalize_for_hash(s: str) -> str:
     """
     ハッシュ用の軽量正規化：
       - NFKCで全角/半角を統一
-      - 引用符ゆれを統一（” “ ‟ 〝 〞 → "、 ‘ ’ ＇ → '）
+      - 引用符ゆれを統一（" " ‟ 〝 〞 → "、 ' ' ＇ → '）
       - 連続空白を1つに圧縮
       - 前後空白削除
     """
     if s is None:
         return ""
     x = unicodedata.normalize("NFKC", s)
-    x = x.replace("“", '"').replace("”", '"').replace("‟", '"').replace("〝", '"').replace("〞", '"')
-    x = x.replace("‘", "'").replace("’", "'").replace("＇", "'")
+    x = x.replace(""", '"').replace(""", '"').replace("‟", '"').replace("〝", '"').replace("〞", '"')
+    x = x.replace("'", "'").replace("'", "'").replace("＇", "'")
     x = re.sub(r"\s+", " ", x).strip()
     return x
 
 def resolve_target_date() -> str:
-    """環境変数でターゲット日付を上書き可能（YYYY-MM-DD）。未指定ならJST“今日”"""
+    """環境変数でターゲット日付を上書き可能（YYYY-MM-DD）。未指定ならJST今日"""
     override = os.getenv("SCRAPER_TARGET_DATE")
     if override:
         return override
@@ -144,7 +157,7 @@ def main():
     out.sort(key=_sort_key)
 
     # 6) JSON保存（storage/{target_date}_a.json）— プロジェクト統一方針に合わせて空配列も保存
-    path = STORAGE_DIR / f"{target_date}_a.json"
+    path = _storage_path(target_date, "a")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
