@@ -7,11 +7,11 @@ JST = timezone(timedelta(hours=9))
 # 単日日付（例: 8.29(金) / 8.29）
 _date_pat = re.compile(r'(?P<m>\d{1,2})[./](?P<d>\d{1,2})(?:\([^)]+\))?')
 
-# 期間（例: 8.13(水)～8.31(日) / 8/13〜8/31 / 8.13-8.31）
+# 期間（例: 8.13(水)～8.31(日) / 8/13〜8/31 / 8.13-8.31 / 9.3(水)～7(日)）
 _RANGE_PAT = re.compile(
     r'(?P<m1>\d{1,2})[./](?P<d1>\d{1,2})(?:\([^)]+\))?\s*'
     r'[～~\-–—〜]\s*'
-    r'(?P<m2>\d{1,2})[./](?P<d2>\d{1,2})(?:\([^)]+\))?'
+    r'(?:(?P<m2>\d{1,2})[./])?(?P<d2>\d{1,2})(?:\([^)]+\))?'  # m2を任意に変更
 )
 
 # 時刻は「～」の有無や後続文字を気にせず拾えるように（例: 10:00 / 10:00～18:00）
@@ -39,6 +39,9 @@ def split_and_normalize(dt_text: str, title: str, venue: str, year: int | None =
 
     '8.13(水)～8.31(日) 10:00～18:00'
       → 8/13〜8/31 を日ごと展開（時間は先頭の 10:00 を採用）
+      
+    '9.3(水)～7(日)'  ← 月省略パターンに対応
+      → 9/3〜9/7 を日ごと展開（開始月を終了日にも適用）
     """
     if year is None:
         year = datetime.now(JST).year
@@ -53,7 +56,9 @@ def split_and_normalize(dt_text: str, title: str, venue: str, year: int | None =
     rm = _RANGE_PAT.search(left)
     if rm:
         m1 = int(rm.group('m1')); d1 = int(rm.group('d1'))
-        m2 = int(rm.group('m2')); d2 = int(rm.group('d2'))
+        # 終了月が省略されている場合は開始月を継承
+        m2 = int(rm.group('m2')) if rm.group('m2') else m1
+        d2 = int(rm.group('d2'))
 
         # テキスト中の時刻を全部拾い、先頭ひとつを開始時刻として採用
         times = []
