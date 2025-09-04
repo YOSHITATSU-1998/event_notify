@@ -1,11 +1,17 @@
 # scrapers/paypay_dome_events.py
-import os, json, time, re, unicodedata
+import os
+import json
+import time
+import re
+import unicodedata
 from datetime import datetime
 from typing import List, Dict
+from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
+
 from event_notify.utils.parser import JST
-from event_notify.utils.paths import STORAGE_DIR
 
 # ---- META / SELECTORS -------------------------------------------------------
 META = {
@@ -24,6 +30,13 @@ HEADERS = {
 }
 
 # ---- UTILS ------------------------------------------------------------------
+def _storage_path(date_str: str, code: str) -> Path:
+    """共通のストレージパス生成（他のスクレイパーと統一）"""
+    root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
+    storage = root / "storage"
+    storage.mkdir(parents=True, exist_ok=True)
+    return storage / f"{date_str}_{code}.json"
+
 def sha1(s: str) -> str:
     import hashlib
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
@@ -214,7 +227,7 @@ def main():
     out.sort(key=_sort_key)
 
     # 6) JSON保存（storage/{target_date}_f_event.json）
-    path = STORAGE_DIR / f"{target_date}_f_event.json"
+    path = _storage_path(target_date, "f_event")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
