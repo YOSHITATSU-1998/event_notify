@@ -25,6 +25,7 @@ except ImportError:
         ("d", "福岡国際会議場"),
         ("e", "福岡サンパレス"),
         ("f", "みずほPayPayドーム"),
+        ("f_event", "みずほPayPayドーム（イベント）"),  # 1.4実装
     ]
 
 # サイトディレクトリ
@@ -202,3 +203,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
