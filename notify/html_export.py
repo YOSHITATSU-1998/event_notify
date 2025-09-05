@@ -1,32 +1,27 @@
-# notify/html_export.py Ver.1.4対応版（会場リンク化・意見箱追加）
+# notify/html_export.py Ver.1.5対応版（完全単独動作）
 import os
 import sys
-from datetime import datetime
+import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 # パス解決
 sys.path.append(str(Path(__file__).parent.parent))
-try:
-    from utils.paths import STORAGE_DIR
-except ImportError:
-    STORAGE_DIR = Path(__file__).parent.parent / "storage"
-    STORAGE_DIR.mkdir(exist_ok=True)
 
-try:
-    from notify.dispatch import load_events_for, determine_today, build_message, JST, VENUES
-except ImportError:
-    # フォールバック定義
-    JST = datetime.now().astimezone().tzinfo
-    VENUES = [
-        ("a", "マリンメッセA館"),
-        ("b", "マリンメッセB館"),
-        ("c", "福岡国際センター"),
-        ("d", "福岡国際会議場"),
-        ("e", "福岡サンパレス"),
-        ("f", "みずほPayPayドーム"),
-        ("f_event", "みずほPayPayドーム（イベント）"),  
-    ]
+# JST定義
+JST = timezone(timedelta(hours=9))
+
+# 会場定義（ハードコード）
+VENUES = [
+    ("a", "マリンメッセA館"),
+    ("b", "マリンメッセB館"),
+    ("c", "福岡国際センター"),
+    ("d", "福岡国際会議場"),
+    ("e", "福岡サンパレス"),
+    ("f", "みずほPayPayドーム"),
+    ("f_event", "みずほPayPayドーム（イベント）"),  
+]
 
 # 会場リンクマッピング
 VENUE_LINKS = {
@@ -41,9 +36,86 @@ VENUE_LINKS = {
 # Google Forms URL
 OPINION_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfX2EtHu3hZ2FgMfUjSOx1YYQqt2BaB3BGniVPF5TMCtgLByw/viewform"
 
-# サイトディレクトリ
-SITE_DIR = Path(__file__).parent.parent / "site"
-SITE_DIR.mkdir(exist_ok=True)
+def determine_today_standalone() -> str:
+    """今日の日付を取得（単独動作版）"""
+    return datetime.now(JST).strftime("%Y-%m-%d")
+
+def get_storage_dir() -> Path:
+    """ストレージディレクトリを取得（単独動作版）"""
+    try:
+        from utils.paths import STORAGE_DIR
+        return STORAGE_DIR
+    except ImportError:
+        storage_dir = Path(__file__).parent.parent / "storage"
+        storage_dir.mkdir(exist_ok=True)
+        return storage_dir
+
+def load_events_standalone(today: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """イベントデータを読み込み（完全単独版）"""
+    storage_dir = get_storage_dir()
+    events = []
+    missing = []
+    
+    print(f"[html_export] Loading events from: {storage_dir}")
+    
+    for code, venue_name in VENUES:
+        json_path = storage_dir / f"{today}_{code}.json"
+        
+        try:
+            if json_path.exists():
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    
+                # リスト形式の場合
+                if isinstance(data, list):
+                    events.extend(data)
+                    print(f"[html_export] Loaded {len(data)} events from {code}")
+                # 単一オブジェクトの場合
+                elif isinstance(data, dict):
+                    events.append(data)
+                    print(f"[html_export] Loaded 1 event from {code}")
+                else:
+                    print(f"[html_export] Unexpected data format in {code}: {type(data)}")
+            else:
+                missing.append(code)
+                print(f"[html_export] Missing file: {json_path}")
+                
+        except Exception as e:
+            missing.append(code)
+            print(f"[html_export] Error loading {code}: {e}")
+    
+    # 今日のイベントのみフィルタ
+    today_events = [ev for ev in events if ev.get("date") == today]
+    
+    # 時刻順ソート
+    def sort_key(event):
+        time_str = event.get("time", "99:99")
+        if not time_str or time_str == "（時刻未定）":
+            return ("99:99", event.get("title", ""), event.get("venue", ""))
+        return (time_str, event.get("title", ""), event.get("venue", ""))
+    
+    today_events.sort(key=sort_key)
+    
+    print(f"[html_export] Filtered to {len(today_events)} events for {today}")
+    return today_events, missing
+
+def build_message_standalone(today: str, events: List[Dict[str, Any]], missing: List[str]) -> str:
+    """Slack通知と同じメッセージを生成（単独版）"""
+    lines = [f"【本日のイベント】{today}"]
+    
+    if not events:
+        lines.append("本日の掲載イベントは見つかりませんでした。")
+    else:
+        for ev in events:
+            time_str = ev.get("time", "（時刻未定）")
+            title = ev.get("title", "")
+            venue = ev.get("venue", "")
+            lines.append(f"- {time_str}｜{title}（{venue}）")
+
+    if missing:
+        lines.append(f"取得できなかった会場: {', '.join(missing)}")
+
+    return "\n".join(lines)
 
 def generate_venue_list() -> str:
     """VENUES配列から会場一覧HTMLを生成（リンク化・PayPayドーム統合）"""
@@ -215,7 +287,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.1.4 - 7会場対応（意見箱機能追加）</p>
+            <p>Ver.1.5 - 7会場対応（完全単独動作）</p>
         </div>
     </div>
 </body>
@@ -223,40 +295,20 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
     return html
 
 def export_html():
-    """HTMLファイルを生成してsite/index.htmlに保存"""
+    """HTMLファイルを生成してsite/index.htmlに保存（完全単独版）"""
     try:
-        print("[html_export] Starting Ver.1.4 HTML generation...")
+        print("[html_export] Starting Ver.1.5 HTML generation (standalone mode)...")
         
         # 今日の日付を取得
-        today = determine_today()
+        today = determine_today_standalone()
         print(f"[html_export] Target date: {today}")
         
-        # イベントデータを読み込み
-        try:
-            from notify.dispatch import load_events_for
-            events, missing = load_events_for(today)
-            print(f"[html_export] Loaded {len(events)} events, missing: {missing}")
-        except ImportError:
-            print("[html_export] Could not import dispatch functions, using empty data")
-            events, missing = [], []
+        # イベントデータを読み込み（完全単独版）
+        events, missing = load_events_standalone(today)
+        print(f"[html_export] Loaded {len(events)} events, missing: {missing}")
         
-        # Slack通知と同じメッセージを生成
-        try:
-            from notify.dispatch import build_message
-            event_message = build_message(today, events, missing)
-        except ImportError:
-            # フォールバック
-            if not events:
-                event_message = f"【本日のイベント】{today}\n本日の掲載イベントは見つかりませんでした。"
-            else:
-                lines = [f"【本日のイベント】{today}"]
-                for ev in events:
-                    time_str = ev.get("time", "（時刻未定）")
-                    title = ev.get("title", "")
-                    venue = ev.get("venue", "")
-                    lines.append(f"- {time_str}｜{title}（{venue}）")
-                event_message = "\n".join(lines)
-        
+        # メッセージ生成（完全単独版）
+        event_message = build_message_standalone(today, events, missing)
         print(f"[html_export] Generated message: {len(event_message)} characters")
         
         # 会場一覧を生成（リンク化・統合処理）
@@ -267,15 +319,22 @@ def export_html():
         html_content = create_html_content(today, event_message, venue_list)
         
         # site/index.html に保存
-        output_path = SITE_DIR / "index.html"
+        site_dir = Path(__file__).parent.parent / "site"
+        site_dir.mkdir(exist_ok=True)
+        output_path = site_dir / "index.html"
+        
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html_content)
         
         print(f"[html_export] Successfully generated: {output_path}")
         print(f"[html_export] File size: {len(html_content)} bytes")
+        print(f"[html_export] Events included: {len(events)}")
+        print(f"[html_export] Missing venues: {missing}")
         
     except Exception as e:
         print(f"[html_export][ERROR] Failed to generate HTML: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 def main():
