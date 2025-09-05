@@ -1,12 +1,24 @@
-name: Daily Scraper & Dispatch Ver.1.4
+name: Daily Scraper & Dispatch Ver.1.5 - Dual Schedule
 on:
-  workflow_dispatch: {}
+  workflow_dispatch: 
+    inputs:
+      job_type:
+        description: 'Job type to run'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+        - both
+        - pages-only
+        - slack-only
   schedule:
-    - cron: '0 21 * * *'   # JST 06:00
+    - cron: '30 15 * * *'   # JST 00:30 - Pages更新
+    - cron: '0 21 * * *'    # JST 06:00 - Slack通知
 
 jobs:
-  run-daily:
+  pages-update:
     runs-on: ubuntu-latest
+    if: github.event.schedule == '30 15 * * *' || github.event_name == 'workflow_dispatch' && (github.event.inputs.job_type == 'both' || github.event.inputs.job_type == 'pages-only')
     permissions:
       contents: read
       pages: write
@@ -14,8 +26,6 @@ jobs:
     env:
       TZ: Asia/Tokyo
       PYTHONPATH: ${{ github.workspace }}/..
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
     
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +41,7 @@ jobs:
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
       
-      - name: Install Playwright (Ver.1.4 - PayPay events support)
+      - name: Install Playwright (Ver.1.5 - PayPay events support)
         run: |
           pip install playwright>=1.40.0
           playwright install chromium
@@ -53,9 +63,10 @@ jobs:
           python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.1.4 - 7 venue system)
+      - name: Run scrapers (Ver.1.5 - 7 venue system for Pages)
         run: |
           set -e
+          echo "🌙 Pages更新用スクレイピング開始 - $(date)"
           python -m event_notify.scrapers.marinemesse_a
           python -m event_notify.scrapers.marinemesse_b  
           python -m event_notify.scrapers.kokusai_center
@@ -63,15 +74,18 @@ jobs:
           python -m event_notify.scrapers.sunpalace
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
+          echo "✅ Pages用スクレイピング完了"
       
       - name: Generate HTML for web
         run: |
           set -e
+          echo "📄 HTML生成開始"
           mkdir -p site
           cd event_notify
           python -m notify.html_export
           cp -r site/* ../site/
           ls -la ../site/
+          echo "✅ HTML生成完了"
       
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -85,9 +99,85 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
       
+      - name: Pages update completion log
+        run: |
+          echo "🎉 Pages更新完了 - $(date)"
+          echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
+
+  slack-notify:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 21 * * *' || github.event_name == 'workflow_dispatch' && (github.event.inputs.job_type == 'both' || github.event.inputs.job_type == 'slack-only')
+    env:
+      TZ: Asia/Tokyo
+      PYTHONPATH: ${{ github.workspace }}/..
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: event_notify
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
+      
+      - name: Install Playwright (Ver.1.5 - PayPay events support)
+        run: |
+          pip install playwright>=1.40.0
+          playwright install chromium
+      
+      - name: Ensure __init__.py files
+        run: |
+          touch event_notify/__init__.py
+          touch event_notify/scrapers/__init__.py
+          touch event_notify/utils/__init__.py
+          touch event_notify/notify/__init__.py
+      
+      - name: Debug environment
+        run: |
+          echo "Working directory: $(pwd)"
+          echo "Directory structure:"
+          ls -la
+          ls -la event_notify/
+          echo "Python path test:"
+          python -c "import sys; print('sys.path:', sys.path[:3])"
+          python -c "import event_notify; print('✅ event_notify import OK')"
+      
+      - name: Run scrapers (Ver.1.5 - 7 venue system for Slack)
+        run: |
+          set -e
+          echo "🌅 Slack通知用スクレイピング開始 - $(date)"
+          python -m event_notify.scrapers.marinemesse_a
+          python -m event_notify.scrapers.marinemesse_b  
+          python -m event_notify.scrapers.kokusai_center
+          python -m event_notify.scrapers.congress_b
+          python -m event_notify.scrapers.sunpalace
+          python -m event_notify.scrapers.paypay_dome
+          python -m event_notify.scrapers.paypay_dome_events
+          echo "✅ Slack用スクレイピング完了"
+      
+      - name: Get Pages URL for notification
+        run: |
+          REPO_OWNER=$(echo ${{ github.repository }} | cut -d'/' -f1)
+          REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2)
+          echo "GITHUB_PAGES_URL=https://${REPO_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_ENV
+      
       - name: Dispatch notification
         run: |
           set -e
+          echo "📢 Slack通知開始"
           python -m event_notify.notify.dispatch
+          echo "✅ Slack通知完了"
         env:
           GITHUB_PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+      
+      - name: Slack notification completion log
+        run: |
+          echo "🎉 Slack通知完了 - $(date)"
+          echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
