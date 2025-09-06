@@ -27,6 +27,7 @@ VENUES: List[Tuple[str, str]] = [
     ("e", "福岡サンパレス"),
     ("f", "みずほPayPayドーム"),  # Ver.1.3追加
     ("f_event", "みずほPayPayドーム（イベント）"),  # 1.4実装
+    ("g","ベスト電器スタジアム")#1.6実装
 ]
 CODE_INDEX: Dict[str, int] = {c: i for i, (c, _) in enumerate(VENUES)}
 CODE2NAME: Dict[str, str] = {c: n for c, n in VENUES}
