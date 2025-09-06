@@ -1,4 +1,4 @@
-# notify/dispatch.py Ver.1.3対応版（PayPayドーム追加・通知フィルター対応）
+# notify/dispatch.py Ver.1.6対応版（スマホファースト・2行表示対応）
 import os
 import json
 import hashlib
@@ -124,8 +124,43 @@ def load_events_for(today: str) -> tuple[list[Dict[str, Any]], list[str]]:
     uniq.sort(key=_sort_key)
     return uniq, missing
 
-# --- 整形 ---------------------------------------------------------------
+# --- 整形（Ver.1.6: スマホファースト対応） ----------------------------------
+def format_message_mobile_friendly(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
+    """Ver.1.6: スマホファースト・2行表示対応版"""
+    lines: list[str] = [f"【本日のイベント】{today}"]
+
+    if not events:
+        lines.append("")  # タイトルとの区切り
+        lines.append("本日の掲載イベントは見つかりませんでした。")
+    else:
+        lines.append("")  # タイトルとイベント一覧の区切り
+        for ev in events:
+            time_str = ev.get("time") if ev.get("time") else "（時刻未定）"
+            venue = ev.get("venue", "")
+            title = ev.get("title", "")
+            
+            # Ver.1.6: 2行表示 + 空白行区切り
+            lines.append(f"- {time_str}｜{venue}")
+            lines.append(title)
+            # 最後のイベント以外に空白行追加
+            if ev != events[-1]:  # 最後のイベントでなければ空白行
+                lines.append("")
+
+    if missing:
+        lines.append("")  # イベントとmissing情報の区切り
+        missing_names = [CODE2NAME.get(code, code) for code in missing]
+        lines.append("取得できなかった会場: " + ", ".join(missing_names))
+
+    # Ver.1.6: 詳細URL（必ず表示・固定URL）
+    lines.append("")  # 空白行
+    lines.append("詳細はこちら👇")
+    lines.append("https://yoshitatsu-1998.github.io/event_notify/")
+
+    return "\n".join(lines)
+
+# --- 整形（従来版・互換性保持） ------------------------------------------
 def format_message(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
+    """従来版（1行表示）"""
     lines: list[str] = [f"【本日のイベント】{today}"]
 
     if not events:
@@ -190,22 +225,23 @@ def send_to_line(text: str, line_token: str) -> bool:
 
 # --- build_message 関数（Web出力と共用） ----------------------------------
 def build_message(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
-    """Slack通知とWeb出力で共用する純関数（Ver.1.3: Web URL対応）"""
-    return format_message(today, events, missing, pages_url)
+    """Slack通知とWeb出力で共用する純関数（Ver.1.6: スマホファースト対応）"""
+    # Ver.1.6: 新しいフォーマットを使用
+    return format_message_mobile_friendly(today, events, missing, pages_url)
 
 # --- main ----------------------------------------------------------------
 def main() -> None:
-    print("[dispatch] start Ver.1.3")
+    print("[dispatch] start Ver.1.6")
     today = determine_today()
     events, missing = load_events_for(today)
     print(f"[dispatch] gathered items={len(events)} missing={missing}")
 
-    # GitHub Pages URL取得
-    pages_url = get_github_pages_url()
-    if pages_url:
-        print(f"[dispatch] pages_url={pages_url}")
+    # GitHub Pages URL取得（不要になったのでコメントアウト）
+    # pages_url = get_github_pages_url()
+    # if pages_url:
+    #     print(f"[dispatch] pages_url={pages_url}")
 
-    body = build_message(today, events, missing, pages_url)
+    body = build_message(today, events, missing)
     print("[dispatch] preview:\n" + body)
 
     # DRY_RUN チェック
@@ -227,4 +263,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
