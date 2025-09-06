@@ -1,4 +1,4 @@
-# notify/html_export.py Ver.1.5対応版（完全単独動作）
+# notify/html_export.py Ver.1.6対応版（スマホファースト・2行表示対応）
 import os
 import sys
 import json
@@ -100,21 +100,33 @@ def load_events_standalone(today: str) -> Tuple[List[Dict[str, Any]], List[str]]
     return today_events, missing
 
 def build_message_standalone(today: str, events: List[Dict[str, Any]], missing: List[str]) -> str:
-    """Slack通知と同じメッセージを生成（単独版）"""
+    """Ver.1.6: Slack通知と同じメッセージを生成（スマホファースト・2行表示対応）"""
     lines = [f"【本日のイベント】{today}"]
     
     if not events:
+        lines.append("")  # タイトルとの区切り
         lines.append("本日の掲載イベントは見つかりませんでした。")
     else:
-        for ev in events:
+        lines.append("")  # タイトルとイベント一覧の区切り
+        for i, ev in enumerate(events):
             time_str = ev.get("time", "（時刻未定）")
             title = ev.get("title", "")
             venue = ev.get("venue", "")
-            lines.append(f"- {time_str}｜{title}（{venue}）")
+            
+            # Ver.1.6: 2行表示
+            lines.append(f"- {time_str}｜{venue}")
+            lines.append(title)
+            
+            # 最後のイベント以外に空白行追加
+            if i != len(events) - 1:
+                lines.append("")
 
     if missing:
+        lines.append("")  # イベントとmissing情報の区切り
         lines.append(f"取得できなかった会場: {', '.join(missing)}")
 
+    # Ver.1.6: GitHub Pagesでは詳細URL不要（自分のページだから）
+    
     return "\n".join(lines)
 
 def generate_venue_list() -> str:
@@ -287,7 +299,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.1.5 - 7会場対応（完全単独動作）</p>
+            <p>Ver.1.6 - 7会場対応（スマホファースト対応）</p>
         </div>
     </div>
 </body>
@@ -297,7 +309,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
 def export_html():
     """HTMLファイルを生成してsite/index.htmlに保存（完全単独版）"""
     try:
-        print("[html_export] Starting Ver.1.5 HTML generation (standalone mode)...")
+        print("[html_export] Starting Ver.1.6 HTML generation (mobile-friendly mode)...")
         
         # 今日の日付を取得
         today = determine_today_standalone()
@@ -307,9 +319,9 @@ def export_html():
         events, missing = load_events_standalone(today)
         print(f"[html_export] Loaded {len(events)} events, missing: {missing}")
         
-        # メッセージ生成（完全単独版）
+        # メッセージ生成（Ver.1.6: スマホファースト対応）
         event_message = build_message_standalone(today, events, missing)
-        print(f"[html_export] Generated message: {len(event_message)} characters")
+        print(f"[html_export] Generated mobile-friendly message: {len(event_message)} characters")
         
         # 会場一覧を生成（リンク化・統合処理）
         venue_list = generate_venue_list()
