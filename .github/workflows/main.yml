@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.1.5 - Dual Schedule
+name: Daily Scraper & Dispatch Ver.1.6 - 8 Venue System
 on:
   workflow_dispatch: 
     inputs:
@@ -41,7 +41,7 @@ jobs:
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
       
-      - name: Install Playwright (Ver.1.5 - PayPay events support)
+      - name: Install Playwright (Ver.1.6 - PayPay events support)
         run: |
           pip install playwright>=1.40.0
           playwright install chromium
@@ -63,7 +63,7 @@ jobs:
           python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.1.5 - 7 venue system for Pages)
+      - name: Run scrapers (Ver.1.6 - 8 venue system for Pages)
         run: |
           set -e
           echo "🌙 Pages更新用スクレイピング開始 - $(date)"
@@ -74,7 +74,8 @@ jobs:
           python -m event_notify.scrapers.sunpalace
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
-          echo "✅ Pages用スクレイピング完了"
+          python -m event_notify.scrapers.best_denki_stadium  # Ver.1.6新規追加
+          echo "✅ Pages用スクレイピング完了（8会場）"
       
       - name: Generate HTML for web
         run: |
@@ -103,6 +104,7 @@ jobs:
         run: |
           echo "🎉 Pages更新完了 - $(date)"
           echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📊 対応会場: 8会場（ベスト電器スタジアム追加）"
 
   slack-notify:
     runs-on: ubuntu-latest
@@ -127,7 +129,7 @@ jobs:
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
       
-      - name: Install Playwright (Ver.1.5 - PayPay events support)
+      - name: Install Playwright (Ver.1.6 - PayPay events support)
         run: |
           pip install playwright>=1.40.0
           playwright install chromium
@@ -149,7 +151,7 @@ jobs:
           python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.1.5 - 7 venue system for Slack)
+      - name: Run scrapers (Ver.1.6 - 8 venue system for Slack)
         run: |
           set -e
           echo "🌅 Slack通知用スクレイピング開始 - $(date)"
@@ -160,7 +162,8 @@ jobs:
           python -m event_notify.scrapers.sunpalace
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
-          echo "✅ Slack用スクレイピング完了"
+          python -m event_notify.scrapers.best_denki_stadium  # Ver.1.6新規追加
+          echo "✅ Slack用スクレイピング完了（8会場）"
       
       - name: Get Pages URL for notification
         run: |
@@ -181,3 +184,4 @@ jobs:
         run: |
           echo "🎉 Slack通知完了 - $(date)"
           echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📊 対応会場: 8会場（ベスト電器スタジアム対応）"
