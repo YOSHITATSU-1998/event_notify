@@ -21,6 +21,7 @@ VENUES = [
     ("e", "福岡サンパレス"),
     ("f", "みずほPayPayドーム"),
     ("f_event", "みずほPayPayドーム（イベント）"),  
+    ("g","ベスト電器スタジアム")#1.6実装
 ]
 
 # 会場リンクマッピング
@@ -30,7 +31,8 @@ VENUE_LINKS = {
     "福岡国際センター": "https://www.marinemesse.or.jp/kokusai/event/",
     "福岡国際会議場": "https://www.marinemesse.or.jp/congress/event/",
     "福岡サンパレス": "https://www.f-sunpalace.com/hall/#hallEvent",
-    "みずほPayPayドーム": "https://www.softbankhawks.co.jp/"
+    "みずほPayPayドーム": "https://www.softbankhawks.co.jp/",
+    "ベスト電器スタジアム": "https://www.avispa.co.jp/game_practice"
 }
 
 # Google Forms URL
