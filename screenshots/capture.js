@@ -1,0 +1,98 @@
+// screenshots/capture.js - GitHub Pages スクリーンショット取得
+const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
+
+async function captureScreenshot() {
+    console.log('📸 Starting screenshot capture...');
+    
+    // 今日の日付取得 (JST)
+    const now = new Date();
+    const jstOffset = 9 * 60; // JST is UTC+9
+    const jstTime = new Date(now.getTime() + jstOffset * 60000);
+    const today = jstTime.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    console.log(`📅 Target date: ${today}`);
+    
+    // GitHub Pages URL
+    const url = 'https://yoshitatsu-1998.github.io/event_notify/';
+    console.log(`🌐 Target URL: ${url}`);
+    
+    let browser;
+    try {
+        // ブラウザ起動
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-web-security'
+            ]
+        });
+        
+        const page = await browser.newPage();
+        
+        // ページサイズ設定（デスクトップ表示）
+        await page.setViewportSize({ width: 1200, height: 800 });
+        
+        console.log('🔍 Navigating to page...');
+        
+        // ページにアクセス
+        await page.goto(url, { 
+            waitUntil: 'networkidle',
+            timeout: 30000 
+        });
+        
+        // ページが完全に読み込まれるまで少し待機
+        await page.waitForTimeout(2000);
+        
+        // screenshots ディレクトリが存在することを確認
+        const screenshotsDir = path.dirname(__filename);
+        if (!fs.existsSync(screenshotsDir)) {
+            fs.mkdirSync(screenshotsDir, { recursive: true });
+        }
+        
+        // スクリーンショット取得
+        const screenshotPath = path.join(screenshotsDir, `${today}.jpeg`);
+        
+        console.log(`💾 Saving screenshot to: ${screenshotPath}`);
+        
+        await page.screenshot({
+            path: screenshotPath,
+            type: 'jpeg',
+            quality: 90,
+            fullPage: true
+        });
+        
+        console.log('✅ Screenshot captured successfully!');
+        
+        // ファイルサイズ確認
+        const stats = fs.statSync(screenshotPath);
+        const fileSizeKB = Math.round(stats.size / 1024);
+        console.log(`📊 File size: ${fileSizeKB} KB`);
+        
+    } catch (error) {
+        console.error('❌ Error capturing screenshot:', error);
+        process.exit(1);
+    } finally {
+        if (browser) {
+            await browser.close();
+            console.log('🔒 Browser closed');
+        }
+    }
+}
+
+// メイン実行
+if (require.main === module) {
+    captureScreenshot()
+        .then(() => {
+            console.log('🎉 Screenshot capture completed!');
+            process.exit(0);
+        })
+        .catch((error) => {
+            console.error('💥 Fatal error:', error);
+            process.exit(1);
+        });
+}
+
+module.exports = { captureScreenshot };
