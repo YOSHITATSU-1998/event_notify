@@ -1,4 +1,4 @@
-# scrapers/sunpalace.py - 福岡サンパレス イベントスクレイパー
+# scrapers/sunpalace.py - 福岡サンパレス イベントスクレイパー（修正版）
 import os
 import re
 import sys
@@ -61,30 +61,71 @@ def create_hash(date: str, time: str, title: str, venue: str) -> str:
     key = f"{date}|{time or ''}|{normalize_text(title)}|{normalize_text(venue)}"
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
-# --- 日付処理（parser.py対応版）-------------------------------------------
-def extract_month_from_header(header_text: str) -> Optional[int]:
+# --- 月別セクション分離（修正版）-------------------------------------------
+def extract_month_sections(soup: BeautifulSoup) -> List[Dict[str, Any]]:
     """
-    ヘッダーテキストから月を抽出
-    例: "2025年7月のイベント情報" -> 7
+    月別セクションを正確に分離して取得
+    返値: [{"month": 9, "year": 2025, "table": table_element}, ...]
     """
-    if not header_text:
-        return None
+    sections = []
+    current_year = datetime.now(JST).year
+    
+    # 月ヘッダーのパターン
+    month_pattern = re.compile(r'(\d{4})年(\d+)月のイベント情報|(\d+)月のイベント情報')
+    
+    # ページ内の全要素を順番に走査
+    all_elements = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'table'])
+    
+    current_month = None
+    current_year_for_section = current_year
+    
+    for element in all_elements:
+        element_text = element.get_text(strip=True)
         
-    match = re.search(r'(\d{4})年(\d+)月', header_text)
-    if match:
-        return int(match.group(2))
+        # 月ヘッダーを検出
+        month_match = month_pattern.search(element_text)
+        if month_match:
+            if month_match.group(1):  # 年月両方指定
+                current_year_for_section = int(month_match.group(1))
+                current_month = int(month_match.group(2))
+            else:  # 月のみ指定
+                current_month = int(month_match.group(3))
+            
+            print(f"[sunpalace] Found month section: {current_year_for_section}年{current_month}月")
+            continue
+        
+        # テーブル要素でかつ月が設定されている場合
+        if element.name == 'table' and current_month is not None:
+            # テーブルがイベント情報を含むかチェック
+            if has_event_content(element):
+                sections.append({
+                    "month": current_month,
+                    "year": current_year_for_section,
+                    "table": element
+                })
+                print(f"[sunpalace] Added table for {current_year_for_section}-{current_month:02d}")
     
-    # 年なしパターン
-    match = re.search(r'(\d+)月', header_text)
-    if match:
-        return int(match.group(1))
+    return sections
+
+def has_event_content(table) -> bool:
+    """テーブルがイベント情報を含むかチェック"""
+    if not table:
+        return False
     
-    return None
+    # ヘッダー行をチェック
+    first_row = table.find('tr')
+    if not first_row:
+        return False
+    
+    header_text = first_row.get_text().lower()
+    # イベント情報テーブルの特徴的なヘッダーをチェック
+    event_keywords = ['開催日', 'イベント', '主催者', '開場', '開演', '入場料']
+    return any(keyword in header_text for keyword in event_keywords)
 
 def convert_sunpalace_date_format(date_str: str, month: int, year: int) -> str:
     """
     サンパレス形式を parser.py が理解できる形式に変換
-    "5(土)" -> "7.5(土)" (月を補完)
+    "5(土)" -> "9.5(土)" (月を補完)
     """
     if not date_str:
         return ""
@@ -102,7 +143,7 @@ def convert_sunpalace_date_format(date_str: str, month: int, year: int) -> str:
     
     return date_str
 
-# --- スクレイピング -----------------------------------------------------
+# --- スクレイピング（修正版）--------------------------------------------
 def fetch_page() -> BeautifulSoup:
     """Webページを取得してパース"""
     try:
@@ -117,114 +158,167 @@ def fetch_page() -> BeautifulSoup:
         print(f"[sunpalace][ERROR] Failed to fetch {TARGET_URL}: {e}")
         raise
 
-def extract_events_from_table(table, current_month: int, current_year: int) -> List[Dict[str, Any]]:
-    """テーブルからイベント情報を抽出（parser.py使用版）"""
+def extract_events_from_table(table, target_month: int, target_year: int) -> List[Dict[str, Any]]:
+    """指定された月のテーブルからイベント情報を抽出（rowspan対応版）"""
     events = []
     
     rows = table.find_all('tr')
-    for row in rows[1:]:  # ヘッダー行をスキップ
+    if not rows:
+        return events
+    
+    # rowspan対応のためのカラム継続データ管理
+    column_continuations = {}  # {column_index: {"value": "継続する値", "remaining_rows": 残り行数}}
+    
+    for row_idx, row in enumerate(rows[1:], 1):  # ヘッダー行をスキップ
         cells = row.find_all(['td', 'th'])
-        if len(cells) < 4:  # 最低限の列数チェック
+        if len(cells) < 1:  # 最低限日付セルがあるかチェック
             continue
             
         try:
-            # セル内容を取得
-            date_cell = cells[0].get_text(strip=True) if cells[0] else ""
-            event_cell = cells[1].get_text(strip=True) if len(cells) > 1 and cells[1] else ""
-            contact_cell = cells[2].get_text(strip=True) if len(cells) > 2 and cells[2] else ""
-            open_time = cells[3].get_text(strip=True) if len(cells) > 3 and cells[3] else ""
-            start_time = cells[4].get_text(strip=True) if len(cells) > 4 and cells[4] else ""
+            # 実際のカラム値を取得（rowspan考慮）
+            actual_columns = []
+            cell_idx = 0
+            
+            for col_idx in range(6):  # 最大6列想定（日付、イベント、主催者、開場、開演、入場料）
+                if col_idx in column_continuations:
+                    # 前の行から継続
+                    cont = column_continuations[col_idx]
+                    actual_columns.append(cont["value"])
+                    cont["remaining_rows"] -= 1
+                    if cont["remaining_rows"] <= 0:
+                        del column_continuations[col_idx]
+                elif cell_idx < len(cells):
+                    # 新しいセルから取得
+                    cell = cells[cell_idx]
+                    cell_text = cell.get_text(strip=True)
+                    actual_columns.append(cell_text)
+                    
+                    # rowspan チェック
+                    rowspan = cell.get('rowspan')
+                    if rowspan and int(rowspan) > 1:
+                        column_continuations[col_idx] = {
+                            "value": cell_text,
+                            "remaining_rows": int(rowspan) - 1
+                        }
+                        print(f"[sunpalace] Found rowspan={rowspan} at column {col_idx}: '{cell_text}'")
+                    
+                    cell_idx += 1
+                else:
+                    # セルがない場合は空文字
+                    actual_columns.append("")
+            
+            # 各カラムを変数に割り当て
+            date_cell = actual_columns[0] if len(actual_columns) > 0 else ""
+            event_cell = actual_columns[1] if len(actual_columns) > 1 else ""
+            contact_cell = actual_columns[2] if len(actual_columns) > 2 else ""
+            open_time = actual_columns[3] if len(actual_columns) > 3 else ""
+            start_time = actual_columns[4] if len(actual_columns) > 4 else ""
+            price_cell = actual_columns[5] if len(actual_columns) > 5 else ""
+            
+            print(f"[sunpalace] Row {row_idx}: date='{date_cell}', event='{event_cell}', open='{open_time}', start='{start_time}'")
             
             # イベント名チェック
             if not event_cell or len(event_cell.strip()) == 0:
+                print(f"[sunpalace] Row {row_idx}: Skipping - no event name")
+                continue
+            
+            # 日付チェック
+            if not date_cell or len(date_cell.strip()) == 0:
+                print(f"[sunpalace] Row {row_idx}: Skipping - no date")
                 continue
             
             # 日付を parser.py が理解できる形式に変換
-            converted_date = convert_sunpalace_date_format(date_cell, current_month, current_year)
+            converted_date = convert_sunpalace_date_format(date_cell, target_month, target_year)
             
-            # 時刻情報も含めて datetime 文字列を構築
-            time_info = ""
-            if start_time:
-                time_info = f" {start_time}"
-            elif open_time:
-                time_info = f" {open_time}"
+            # 複数時刻の処理（br区切り対応）
+            open_times = [t.strip() for t in open_time.replace('<br>', '\n').split('\n') if t.strip()] if open_time else []
+            start_times = [t.strip() for t in start_time.replace('<br>', '\n').split('\n') if t.strip()] if start_time else []
             
-            datetime_str = f"{converted_date}{time_info}"
+            # 開演時刻を優先、なければ開場時刻
+            if start_times:
+                time_list = start_times
+            elif open_times:
+                time_list = open_times
+            else:
+                time_list = [""]
             
-            # parser.py を使用して正規化・展開
-            parsed_events = split_and_normalize(datetime_str, event_cell, VENUE_NAME, current_year)
-            
-            for parsed_event in parsed_events:
-                # メタデータ追加
-                event = {
-                    "schema_version": "1.0",
-                    **parsed_event,
-                    "source": TARGET_URL,
-                    "extracted_at": datetime.now(JST).isoformat(),
-                }
+            # 各時刻でイベントを生成
+            for time_str in time_list:
+                datetime_str = f"{converted_date}"
+                if time_str:
+                    datetime_str += f" {time_str}"
                 
-                # ハッシュ生成
-                event["hash"] = create_hash(
-                    event["date"],
-                    event.get("time", "") or "",
-                    event["title"],
-                    event["venue"]
-                )
+                print(f"[sunpalace] Processing: month={target_month}, date_cell='{date_cell}' -> converted='{converted_date}' -> datetime_str='{datetime_str}'")
                 
-                events.append(event)
+                # parser.py を使用して正規化・展開
+                parsed_events = split_and_normalize(datetime_str, event_cell, VENUE_NAME, target_year)
+                
+                for parsed_event in parsed_events:
+                    # メタデータ追加
+                    event = {
+                        "schema_version": "1.0",
+                        **parsed_event,
+                        "source": TARGET_URL,
+                        "extracted_at": datetime.now(JST).isoformat(),
+                    }
+                    
+                    # ハッシュ生成
+                    event["hash"] = create_hash(
+                        event["date"],
+                        event.get("time", "") or "",
+                        event["title"],
+                        event["venue"]
+                    )
+                    
+                    events.append(event)
+                    print(f"[sunpalace] Added event: {event['date']} {event.get('time', 'N/A')} - {event['title']}")
                 
         except Exception as e:
-            print(f"[sunpalace][WARN] Failed to parse row: {e}")
+            print(f"[sunpalace][WARN] Failed to parse row {row_idx}: {e}")
             continue
     
     return events
 
 def scrape_events() -> List[Dict[str, Any]]:
-    """サンパレスのイベント情報をスクレイピング"""
+    """サンパレスのイベント情報をスクレイピング（修正版）"""
     soup = fetch_page()
     all_events = []
-    current_year = datetime.now(JST).year
     
-    # イベント情報を含むテーブルを検索
-    tables = soup.find_all('table')
+    # 月別セクションを正確に分離
+    month_sections = extract_month_sections(soup)
     
-    for table in tables:
-        # テーブルの前にある月情報を探す
-        month = None
+    if not month_sections:
+        print("[sunpalace][WARN] No month sections found")
+        return []
+    
+    # 各月のセクションを処理
+    for section in month_sections:
+        month = section["month"]
+        year = section["year"]
+        table = section["table"]
         
-        # テーブルの直前の要素から月を探す
-        prev_elements = []
-        current = table.previous_sibling
-        for _ in range(10):  # 最大10個前まで遡る
-            if current is None:
-                break
-            if hasattr(current, 'get_text'):
-                prev_elements.append(current.get_text())
-            current = current.previous_sibling
+        print(f"[sunpalace] Processing {year}-{month:02d} section")
         
-        # 前の要素から月を抽出
-        for elem_text in prev_elements:
-            month = extract_month_from_header(elem_text)
-            if month:
-                break
-        
-        # デフォルトで現在の月を使用
-        if not month:
-            month = datetime.now(JST).month
-        
-        # テーブルからイベントを抽出
         try:
-            events = extract_events_from_table(table, month, current_year)
+            events = extract_events_from_table(table, month, year)
             all_events.extend(events)
+            print(f"[sunpalace] Extracted {len(events)} events from {year}-{month:02d}")
         except Exception as e:
-            print(f"[sunpalace][WARN] Failed to parse table: {e}")
+            print(f"[sunpalace][WARN] Failed to parse {year}-{month:02d} section: {e}")
             continue
     
     return all_events
 
 def filter_today_only(events: List[Dict[str, Any]], target_date: str) -> List[Dict[str, Any]]:
     """今日のイベントのみをフィルタ"""
-    return [event for event in events if event.get("date") == target_date]
+    filtered = [event for event in events if event.get("date") == target_date]
+    print(f"[sunpalace] Filtered events for {target_date}: {len(filtered)} out of {len(events)}")
+    
+    # デバッグ: フィルタされたイベントを表示
+    for event in filtered:
+        print(f"[sunpalace] Today's event: {event['date']} {event.get('time', 'N/A')} - {event['title']}")
+    
+    return filtered
 
 def save_to_storage(events: List[Dict[str, Any]], target_date: str) -> None:
     """ストレージにJSONとして保存"""
