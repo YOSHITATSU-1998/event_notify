@@ -1,0 +1,24 @@
+{
+  "name": "event-notify-screenshots",
+  "version": "1.0.0",
+  "description": "Screenshot capture for event_notify GitHub Pages monitoring",
+  "main": "screenshots/capture.js",
+  "scripts": {
+    "screenshot": "node screenshots/capture.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "screenshot",
+    "monitoring",
+    "github-pages",
+    "playwright"
+  ],
+  "author": "event_notify team",
+  "license": "MIT"
+}
