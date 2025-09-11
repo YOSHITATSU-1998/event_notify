@@ -100,11 +100,36 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
       
+      - name: Setup Node.js for screenshot
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install Node.js dependencies
+        run: |
+          cd event_notify
+          npm install
+      
+      - name: Take screenshot for audit log
+        run: |
+          cd event_notify
+          echo "📸 スクリーンショット取得開始 - $(date)"
+          node screenshots/capture.js
+          echo "✅ スクリーンショット取得完了"
+      
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: daily-screenshot-${{ github.run_number }}
+          path: event_notify/screenshots/*.jpeg
+          retention-days: 90
+      
       - name: Pages update completion log
         run: |
           echo "🎉 Pages更新完了 - $(date)"
           echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
           echo "📊 対応会場: 8会場（ベスト電器スタジアム追加）"
+          echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
 
   slack-notify:
     runs-on: ubuntu-latest
