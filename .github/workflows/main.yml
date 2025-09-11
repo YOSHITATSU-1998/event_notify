@@ -1,110 +1,212 @@
-// screenshots/capture.js - GitHub Pages スクリーンショット取得
-const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
+name: Daily Scraper & Dispatch Ver.1.6 - 8 Venue System
+on:
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: 'Job type to run'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - pages-only
+          - slack-only
+  schedule:
+    - cron: '30 15 * * *'   # JST 00:30 - Pages更新
+    - cron: '0 21 * * *'    # JST 06:00 - Slack通知
 
-async function captureScreenshot() {
-    console.log('📸 Starting screenshot capture...');
+jobs:
+  pages-update:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '30 15 * * *' || github.event_name == 'workflow_dispatch' && (github.event.inputs.job_type == 'both' || github.event.inputs.job_type == 'pages-only')
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    env:
+      TZ: Asia/Tokyo
+      PYTHONPATH: ${{ github.workspace }}/..
     
-    // 今日の日付取得 (JST)
-    const now = new Date();
-    const jstOffset = 9 * 60; // JST is UTC+9
-    const jstTime = new Date(now.getTime() + jstOffset * 60000);
-    const today = jstTime.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    console.log(`📅 Target date: ${today}`);
-    
-    // GitHub Pages URL
-    const url = 'https://yoshitatsu-1998.github.io/event_notify/';
-    console.log(`🌐 Target URL: ${url}`);
-    
-    let browser;
-    try {
-        // ブラウザ起動
-        browser = await chromium.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-web-security',
-                '--font-render-hinting=none',
-                '--disable-font-subpixel-positioning'
-            ]
-        });
-        
-        const page = await browser.newPage();
-        
-        // ページサイズ設定（デスクトップ表示）
-        await page.setViewportSize({ width: 1200, height: 800 });
-        
-        console.log('🔍 Navigating to page...');
-        
-        // ページにアクセス
-        await page.goto(url, { 
-            waitUntil: 'networkidle',
-            timeout: 30000 
-        });
-        
-        // フォント読み込みを待機
-        await page.waitForTimeout(5000);
-        
-        // Web フォントの読み込み完了を確認
-        await page.waitForFunction(() => {
-            return document.fonts.ready;
-        }, { timeout: 10000 });
-        
-        console.log('✅ Fonts loaded successfully');
-        
-        // 追加の安定化待機
-        await page.waitForTimeout(2000);
-        
-        // screenshots ディレクトリが存在することを確認
-        const screenshotsDir = path.dirname(__filename);
-        if (!fs.existsSync(screenshotsDir)) {
-            fs.mkdirSync(screenshotsDir, { recursive: true });
-        }
-        
-        // スクリーンショット取得
-        const screenshotPath = path.join(screenshotsDir, `${today}.jpeg`);
-        
-        console.log(`💾 Saving screenshot to: ${screenshotPath}`);
-        
-        await page.screenshot({
-            path: screenshotPath,
-            type: 'jpeg',
-            quality: 90,
-            fullPage: true
-        });
-        
-        console.log('✅ Screenshot captured successfully!');
-        
-        // ファイルサイズ確認
-        const stats = fs.statSync(screenshotPath);
-        const fileSizeKB = Math.round(stats.size / 1024);
-        console.log(`📊 File size: ${fileSizeKB} KB`);
-        
-    } catch (error) {
-        console.error('❌ Error capturing screenshot:', error);
-        process.exit(1);
-    } finally {
-        if (browser) {
-            await browser.close();
-            console.log('🔒 Browser closed');
-        }
-    }
-}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: event_notify
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
+      
+      - name: Install Playwright (Ver.1.6 - PayPay events support)
+        run: |
+          pip install playwright>=1.40.0
+          playwright install chromium
+      
+      - name: Ensure __init__.py files
+        run: |
+          touch event_notify/__init__.py
+          touch event_notify/scrapers/__init__.py
+          touch event_notify/utils/__init__.py
+          touch event_notify/notify/__init__.py
+      
+      - name: Debug environment
+        run: |
+          echo "Working directory: $(pwd)"
+          echo "Directory structure:"
+          ls -la
+          ls -la event_notify/
+          echo "Python path test:"
+          python -c "import sys; print('sys.path:', sys.path[:3])"
+          python -c "import event_notify; print('✅ event_notify import OK')"
+      
+      - name: Run scrapers (Ver.1.6 - 8 venue system for Pages)
+        run: |
+          set -e
+          echo "🌙 Pages更新用スクレイピング開始 - $(date)"
+          python -m event_notify.scrapers.marinemesse_a
+          python -m event_notify.scrapers.marinemesse_b  
+          python -m event_notify.scrapers.kokusai_center
+          python -m event_notify.scrapers.congress_b
+          python -m event_notify.scrapers.sunpalace
+          python -m event_notify.scrapers.paypay_dome
+          python -m event_notify.scrapers.paypay_dome_events
+          python -m event_notify.scrapers.best_denki_stadium  # Ver.1.6新規追加
+          echo "✅ Pages用スクレイピング完了（8会場）"
+      
+      - name: Generate HTML for web
+        run: |
+          set -e
+          echo "📄 HTML生成開始"
+          mkdir -p site
+          cd event_notify
+          python -m notify.html_export
+          cp -r site/* ../site/
+          ls -la ../site/
+          echo "✅ HTML生成完了"
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+      
+      - name: Setup Node.js for screenshot
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install Node.js dependencies
+        run: |
+          cd event_notify
+          npm install
+      
+      - name: Take screenshot for audit log
+        run: |
+          cd event_notify
+          echo "📸 スクリーンショット取得開始 - $(date)"
+          node screenshots/capture.js
+          echo "✅ スクリーンショット取得完了"
+      
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-screenshot-${{ github.run_number }}
+          path: event_notify/screenshots/*.jpeg
+          retention-days: 90
+      
+      - name: Pages update completion log
+        run: |
+          echo "🎉 Pages更新完了 - $(date)"
+          echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📊 対応会場: 8会場（ベスト電器スタジアム追加）"
+          echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
 
-// メイン実行
-if (require.main === module) {
-    captureScreenshot()
-        .then(() => {
-            console.log('🎉 Screenshot capture completed!');
-            process.exit(0);
-        })
-        .catch((error) => {
-            console.error('💥 Fatal error:', error);
-            process.exit(1);
-        });
-}
-
-module.exports = { captureScreenshot };
+  slack-notify:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 21 * * *' || github.event_name == 'workflow_dispatch' && (github.event.inputs.job_type == 'both' || github.event.inputs.job_type == 'slack-only')
+    env:
+      TZ: Asia/Tokyo
+      PYTHONPATH: ${{ github.workspace }}/..
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: event_notify
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install -U pip
+          if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
+      
+      - name: Install Playwright (Ver.1.6 - PayPay events support)
+        run: |
+          pip install playwright>=1.40.0
+          playwright install chromium
+      
+      - name: Ensure __init__.py files
+        run: |
+          touch event_notify/__init__.py
+          touch event_notify/scrapers/__init__.py
+          touch event_notify/utils/__init__.py
+          touch event_notify/notify/__init__.py
+      
+      - name: Debug environment
+        run: |
+          echo "Working directory: $(pwd)"
+          echo "Directory structure:"
+          ls -la
+          ls -la event_notify/
+          echo "Python path test:"
+          python -c "import sys; print('sys.path:', sys.path[:3])"
+          python -c "import event_notify; print('✅ event_notify import OK')"
+      
+      - name: Run scrapers (Ver.1.6 - 8 venue system for Slack)
+        run: |
+          set -e
+          echo "🌅 Slack通知用スクレイピング開始 - $(date)"
+          python -m event_notify.scrapers.marinemesse_a
+          python -m event_notify.scrapers.marinemesse_b  
+          python -m event_notify.scrapers.kokusai_center
+          python -m event_notify.scrapers.congress_b
+          python -m event_notify.scrapers.sunpalace
+          python -m event_notify.scrapers.paypay_dome
+          python -m event_notify.scrapers.paypay_dome_events
+          python -m event_notify.scrapers.best_denki_stadium  # Ver.1.6新規追加
+          echo "✅ Slack用スクレイピング完了（8会場）"
+      
+      - name: Get Pages URL for notification
+        run: |
+          REPO_OWNER=$(echo ${{ github.repository }} | cut -d'/' -f1)
+          REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2)
+          echo "GITHUB_PAGES_URL=https://${REPO_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_ENV
+      
+      - name: Dispatch notification
+        run: |
+          set -e
+          echo "📢 Slack通知開始"
+          python -m event_notify.notify.dispatch
+          echo "✅ Slack通知完了"
+        env:
+          GITHUB_PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+      
+      - name: Slack notification completion log
+        run: |
+          echo "🎉 Slack通知完了 - $(date)"
+          echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📊 対応会場: 8会場（ベスト電器スタジアム対応）"
