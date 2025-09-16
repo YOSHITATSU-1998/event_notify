@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.1.8 - Manual Event Support
+name: Daily Scraper & Dispatch Ver.1.8 - Manual Event Support (Fixed)
 on:
   workflow_dispatch:
     inputs:
@@ -78,22 +78,7 @@ jobs:
           python -m event_notify.scrapers.best_denki_stadium
           echo "✅ Pages用スクレイピング完了（8会場）"
       
-      # Ver.1.8新機能: パスワード置換処理
-      - name: Prepare secure manual page
-        run: |
-          echo "🔐 手動イベント追加ページの準備"
-          mkdir -p site
-          # manual.htmlが存在する場合のみ処理
-          if [ -f event_notify/site/manual.html ]; then
-            cp event_notify/site/manual.html site/manual.html
-            # パスワード置換
-            sed -i "s/PLACEHOLDER_PASSWORD/${{ secrets.MANUAL_PASSWORD }}/g" site/manual.html
-            echo "✅ パスワード置換完了: PLACEHOLDER_PASSWORD → [PROTECTED]"
-          else
-            echo "⚠️  manual.html not found - skipping password replacement"
-          fi
-      
-      - name: Generate HTML for web
+      - name: Generate HTML for web (index.html + manual.html)
         run: |
           set -e
           echo "📄 HTML生成開始"
@@ -103,6 +88,28 @@ jobs:
           cp -r site/* ../site/
           ls -la ../site/
           echo "✅ HTML生成完了"
+      
+      # Ver.1.8修正: HTML生成後にパスワード置換
+      - name: Replace password in manual.html
+        run: |
+          echo "🔐 パスワード置換開始"
+          if [ -f site/manual.html ]; then
+            echo "Before replacement:"
+            grep "PLACEHOLDER_PASSWORD" site/manual.html | head -1 || echo "No PLACEHOLDER_PASSWORD found"
+            
+            # パスワード置換実行
+            sed -i "s/PLACEHOLDER_PASSWORD/${{ secrets.MANUAL_PASSWORD }}/g" site/manual.html
+            
+            echo "After replacement:"
+            grep "${{ secrets.MANUAL_PASSWORD }}\|correctPassword" site/manual.html | head -1 || echo "Password replacement may have failed"
+            
+            echo "✅ パスワード置換完了: PLACEHOLDER_PASSWORD → [PROTECTED]"
+          else
+            echo "❌ manual.html not found in site/ directory"
+            ls -la site/
+          fi
+        env:
+          MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}
       
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -152,7 +159,7 @@ jobs:
           echo "🎉 Pages更新完了 - $(date)"
           echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
           echo "📊 対応会場: 8会場（ベスト電器スタジアム追加）"
-          echo "🔐 手動イベント追加: manual.html対応"
+          echo "🔐 手動イベント追加: manual.html対応（パスワード置換済み）"
           echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
 
   slack-notify:
