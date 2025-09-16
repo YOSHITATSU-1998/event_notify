@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>手動イベント追加 - 福岡イベント情報</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .hidden { display: none; }
+        .form-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: #007cba;
+            outline: none;
+        }
+        button {
+            background: #007cba;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #005a8b;
+        }
+        .auth-section {
+            text-align: center;
+        }
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border: 1px solid #c3e6cb;
+        }
+        .error-message {
+            color: #dc3545;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .json-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .copy-button {
+            background: #28a745;
+            margin-top: 10px;
+        }
+        .copy-button:hover {
+            background: #218838;
+        }
+        small {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #007cba;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← メインページに戻る</a>
+        
+        <h1>🎪 手動イベント追加</h1>
+        
+        <!-- パスワード認証セクション -->
+        <div id="auth-section" class="auth-section">
+            <h3>🔐 管理者認証</h3>
+            <p>イベント情報を手動で追加するには認証が必要です</p>
+            <div class="form-group">
+                <input type="password" id="password" placeholder="パスワードを入力してください">
+                <button onclick="authenticate()">ログイン</button>
+            </div>
+            <div id="auth-error" class="error-message"></div>
+        </div>
+        
+        <!-- フォームセクション（初期状態：非表示） -->
+        <div id="form-section" class="hidden">
+            <h3>📝 イベント情報入力</h3>
+            
+            <div class="form-group">
+                <label for="event-type">イベントタイプ:</label>
+                <select id="event-type" onchange="toggleDateFields()">
+                    <option value="">選択してください</option>
+                    <option value="oneshot">単発イベント（1日のみ）</option>
+                    <option value="recurring">期間指定イベント（複数日）</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="title">イベント名:</label>
+                <input type="text" id="title" placeholder="例: 放生屋">
+            </div>
+            
+            <div class="form-group">
+                <label for="venue">会場名:</label>
+                <input type="text" id="venue" placeholder="例: 箱崎宮">
+            </div>
+            
+            <!-- 単発イベント用 -->
+            <div id="oneshot-fields" class="hidden">
+                <div class="form-group">
+                    <label for="single-date">開催日:</label>
+                    <input type="date" id="single-date">
+                </div>
+            </div>
+            
+            <!-- 期間指定イベント用 -->
+            <div id="recurring-fields" class="hidden">
+                <div class="form-group">
+                    <label for="start-date">開始日:</label>
+                    <input type="date" id="start-date">
+                </div>
+                <div class="form-group">
+                    <label for="end-date">終了日:</label>
+                    <input type="date" id="end-date">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="time">時刻（任意）:</label>
+                <input type="time" id="time">
+                <small>空欄の場合「時刻未定」として表示されます</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="notes">備考（任意）:</label>
+                <textarea id="notes" rows="3" placeholder="追加情報があれば記入してください"></textarea>
+            </div>
+            
+            <button onclick="submitEvent()">🚀 イベント追加</button>
+            
+            <div id="success-message" class="success-message hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        // パスワード認証
+        function authenticate() {
+            const password = document.getElementById('password').value;
+            const correctPassword = 'PLACEHOLDER_PASSWORD'; // GitHub Actions で置換される
+            
+            if (password === correctPassword) {
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('form-section').classList.remove('hidden');
+                document.getElementById('auth-error').textContent = '';
+            } else {
+                document.getElementById('auth-error').textContent = 'パスワードが間違っています';
+            }
+        }
+        
+        // イベントタイプによる表示切り替え
+        function toggleDateFields() {
+            const eventType = document.getElementById('event-type').value;
+            const oneshotFields = document.getElementById('oneshot-fields');
+            const recurringFields = document.getElementById('recurring-fields');
+            
+            if (eventType === 'oneshot') {
+                oneshotFields.classList.remove('hidden');
+                recurringFields.classList.add('hidden');
+            } else if (eventType === 'recurring') {
+                oneshotFields.classList.add('hidden');
+                recurringFields.classList.remove('hidden');
+            } else {
+                oneshotFields.classList.add('hidden');
+                recurringFields.classList.add('hidden');
+            }
+        }
+        
+        // イベント追加処理
+        function submitEvent() {
+            const eventType = document.getElementById('event-type').value;
+            const title = document.getElementById('title').value;
+            const venue = document.getElementById('venue').value;
+            const time = document.getElementById('time').value || null;
+            const notes = document.getElementById('notes').value || '';
+            
+            if (!eventType || !title || !venue) {
+                alert('必須項目（イベントタイプ、イベント名、会場名）を入力してください');
+                return;
+            }
+            
+            let eventData = {
+                title: title,
+                venue: venue,
+                time: time,
+                notes: notes,
+                added_at: new Date().toISOString()
+            };
+            
+            if (eventType === 'oneshot') {
+                const date = document.getElementById('single-date').value;
+                if (!date) {
+                    alert('開催日を選択してください');
+                    return;
+                }
+                eventData.date = date;
+                generateJSON('oneshot', eventData);
+            } else if (eventType === 'recurring') {
+                const startDate = document.getElementById('start-date').value;
+                const endDate = document.getElementById('end-date').value;
+                if (!startDate || !endDate) {
+                    alert('開始日と終了日を選択してください');
+                    return;
+                }
+                if (startDate > endDate) {
+                    alert('開始日は終了日より前の日付にしてください');
+                    return;
+                }
+                eventData.start_date = startDate;
+                eventData.end_date = endDate;
+                generateJSON('recurring', eventData);
+            }
+        }
+        
+        // JSON生成・表示
+        function generateJSON(type, eventData) {
+            const jsonOutput = JSON.stringify([eventData], null, 2);
+            
+            // 成功メッセージ表示
+            const successMsg = document.getElementById('success-message');
+            const timeDisplay = eventData.time ? eventData.time : '時刻未定';
+            const dateDisplay = type === 'oneshot' 
+                ? eventData.date 
+                : `${eventData.start_date} ～ ${eventData.end_date}`;
+            
+            successMsg.innerHTML = `
+                <h4>✅ イベント情報が生成されました！</h4>
+                <p><strong>追加予定:</strong> ${eventData.title} (${eventData.venue}) - ${dateDisplay} ${timeDisplay}</p>
+                
+                <h5>📋 次の手順:</h5>
+                <ol>
+                    <li>下のJSONをコピー</li>
+                    <li><code>manual_events/${type}.json</code> ファイルを開く</li>
+                    <li>既存の配列に追加するか、新規作成</li>
+                    <li>dispatch実行で反映確認</li>
+                </ol>
+                
+                <div class="json-output">${jsonOutput}</div>
+                <button class="copy-button" onclick="copyToClipboard('${jsonOutput.replace(/'/g, "\\'")}')">📋 JSONをコピー</button>
+                
+                <p><small>💡 ヒント: 既存のJSONファイルがある場合は、配列内に追加してください</small></p>
+            `;
+            successMsg.classList.remove('hidden');
+            
+            // フォームリセット
+            resetForm();
+        }
+        
+        // フォームリセット
+        function resetForm() {
+            document.getElementById('event-type').value = '';
+            document.getElementById('title').value = '';
+            document.getElementById('venue').value = '';
+            document.getElementById('single-date').value = '';
+            document.getElementById('start-date').value = '';
+            document.getElementById('end-date').value = '';
+            document.getElementById('time').value = '';
+            document.getElementById('notes').value = '';
+            
+            // 日付フィールドを非表示に
+            document.getElementById('oneshot-fields').classList.add('hidden');
+            document.getElementById('recurring-fields').classList.add('hidden');
+        }
+        
+        // クリップボードコピー
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('JSONをクリップボードにコピーしました！\nmanual_events/ フォルダの該当ファイルに貼り付けてください。');
+            }).catch(() => {
+                // フォールバック: テキストエリア作成してコピー
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('JSONをクリップボードにコピーしました！');
+            });
+        }
+        
+        // Enterキーでパスワード認証
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                authenticate();
+            }
+        });
+        
+        // ページ読み込み時に今日の日付を最小値に設定
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('single-date').min = today;
+            document.getElementById('start-date').min = today;
+            document.getElementById('end-date').min = today;
+        });
+    </script>
+</body>
+</html>
