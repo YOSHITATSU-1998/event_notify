@@ -312,15 +312,6 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             <pre>{venue_list}</pre>
         </div>
         
-        <div class="manual-section">
-            <h3>🎪 イベント手動追加</h3>
-            <p>スクレイピング対象外のイベント情報を手動で追加できます</p>
-            <a href="manual.html" class="manual-link">📝 イベント追加フォーム</a>
-            <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
-                ※ 管理者用機能です。パスワードが必要です。
-            </p>
-        </div>
-        
         <div class="opinion-section">
             <h3>ご意見・ご要望</h3>
             <p>会場追加のご希望や情報漏れのご報告をお待ちしています</p>
@@ -333,6 +324,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
             <p>Ver.1.8 - 8会場対応（手動イベント追加機能付き）</p>
+            <p><a href="manual.html" style="color: #95a5a6; text-decoration: none; font-size: 0.8em;">管理者ページへ</a></p>
         </div>
     </div>
 </body>
