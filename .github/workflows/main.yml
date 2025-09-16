@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.1.6 - 8 Venue System
+name: Daily Scraper & Dispatch Ver.1.8 - Manual Event Support
 on:
   workflow_dispatch:
     inputs:
@@ -26,6 +26,7 @@ jobs:
     env:
       TZ: Asia/Tokyo
       PYTHONPATH: ${{ github.workspace }}/..
+      MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}  # Ver.1.8追加
     
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +42,7 @@ jobs:
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
       
-      - name: Install Playwright (Ver.1.6 - PayPay events support)
+      - name: Install Playwright (Ver.1.8 - PayPay events support)
         run: |
           pip install playwright>=1.40.0
           playwright install chromium
@@ -63,7 +64,7 @@ jobs:
           python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.1.6 - 8 venue system for Pages)
+      - name: Run scrapers (Ver.1.8 - 8 venue system for Pages)
         run: |
           set -e
           echo "🌙 Pages更新用スクレイピング開始 - $(date)"
@@ -74,8 +75,23 @@ jobs:
           python -m event_notify.scrapers.sunpalace
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
-          python -m event_notify.scrapers.best_denki_stadium  # Ver.1.6新規追加
+          python -m event_notify.scrapers.best_denki_stadium
           echo "✅ Pages用スクレイピング完了（8会場）"
+      
+      # Ver.1.8新機能: パスワード置換処理
+      - name: Prepare secure manual page
+        run: |
+          echo "🔐 手動イベント追加ページの準備"
+          mkdir -p site
+          # manual.htmlが存在する場合のみ処理
+          if [ -f event_notify/site/manual.html ]; then
+            cp event_notify/site/manual.html site/manual.html
+            # パスワード置換
+            sed -i "s/PLACEHOLDER_PASSWORD/${{ secrets.MANUAL_PASSWORD }}/g" site/manual.html
+            echo "✅ パスワード置換完了: PLACEHOLDER_PASSWORD → [PROTECTED]"
+          else
+            echo "⚠️  manual.html not found - skipping password replacement"
+          fi
       
       - name: Generate HTML for web
         run: |
@@ -136,6 +152,7 @@ jobs:
           echo "🎉 Pages更新完了 - $(date)"
           echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
           echo "📊 対応会場: 8会場（ベスト電器スタジアム追加）"
+          echo "🔐 手動イベント追加: manual.html対応"
           echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
 
   slack-notify:
@@ -146,6 +163,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/..
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+      MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}  # Ver.1.8追加
     
     steps:
       - uses: actions/checkout@v4
@@ -161,7 +179,7 @@ jobs:
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
       
-      - name: Install Playwright (Ver.1.6 - PayPay events support)
+      - name: Install Playwright (Ver.1.8 - PayPay events support)
         run: |
           pip install playwright>=1.40.0
           playwright install chromium
@@ -183,7 +201,7 @@ jobs:
           python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.1.6 - 8 venue system for Slack)
+      - name: Run scrapers (Ver.1.8 - 8 venue system for Slack)
         run: |
           set -e
           echo "🌅 Slack通知用スクレイピング開始 - $(date)"
@@ -194,7 +212,7 @@ jobs:
           python -m event_notify.scrapers.sunpalace
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
-          python -m event_notify.scrapers.best_denki_stadium  # Ver.1.6新規追加
+          python -m event_notify.scrapers.best_denki_stadium
           echo "✅ Slack用スクレイピング完了（8会場）"
       
       - name: Get Pages URL for notification
@@ -203,17 +221,38 @@ jobs:
           REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2)
           echo "GITHUB_PAGES_URL=https://${REPO_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_ENV
       
+      # Ver.1.8新機能: 手動イベント対応
+      - name: Prepare manual events for dispatch
+        run: |
+          echo "📝 手動イベント準備"
+          cd event_notify
+          # manual_events フォルダが存在しない場合は作成
+          mkdir -p manual_events
+          # サンプルファイルがない場合は空配列で作成
+          if [ ! -f manual_events/oneshot.json ]; then
+            echo "[]" > manual_events/oneshot.json
+            echo "✅ oneshot.json created"
+          fi
+          if [ ! -f manual_events/recurring.json ]; then
+            echo "[]" > manual_events/recurring.json
+            echo "✅ recurring.json created"
+          fi
+          echo "📂 Manual events directory ready"
+          ls -la manual_events/
+      
       - name: Dispatch notification
         run: |
           set -e
           echo "📢 Slack通知開始"
-          python -m event_notify.notify.dispatch
+          cd event_notify
+          python -m notify.dispatch
           echo "✅ Slack通知完了"
         env:
-          GITHUB_PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+          GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
       - name: Slack notification completion log
         run: |
           echo "🎉 Slack通知完了 - $(date)"
-          echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📱 Pages URL: ${{ env.GITHUB_PAGES_URL }}"
           echo "📊 対応会場: 8会場（ベスト電器スタジアム対応）"
+          echo "📝 手動イベント: manual_events/対応"
