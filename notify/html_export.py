@@ -656,8 +656,8 @@ def create_manual_html() -> str:
                     </ol>
                 </div>
                 
-                <div class="json-output">${jsonOutput}</div>
-                <button class="copy-button" onclick="copyToClipboard('${jsonOutput.replace(/'/g, "\\'")}')">📋 JSONをコピー</button>
+                <div class="json-output" id="json-output-${type}">${jsonOutput}</div>
+                <button class="copy-button" onclick="copyToClipboard(document.getElementById('json-output-${type}').textContent)">📋 JSONをコピー</button>
                 
                 <p><small>💡 ヒント: 既存のJSONファイルがある場合は、配列内に追加してください</small></p>
             `;
@@ -683,20 +683,45 @@ def create_manual_html() -> str:
             document.getElementById('recurring-fields').classList.add('hidden');
         }
         
-        // クリップボードコピー
+        // クリップボードコピー（改良版）
         function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                alert('JSONをクリップボードにコピーしました！\\nmanual_events/ フォルダの該当ファイルに貼り付けてください。');
-            }).catch(() => {
-                // フォールバック: テキストエリア作成してコピー
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
+            // モダンブラウザ対応
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('✅ JSONをクリップボードにコピーしました！\\nmanual_events/ フォルダの該当ファイルに貼り付けてください。');
+                }).catch((err) => {
+                    console.error('Clipboard API failed:', err);
+                    fallbackCopy(text);
+                });
+            } else {
+                // フォールバック方式
+                fallbackCopy(text);
+            }
+        }
+        
+        // フォールバック方式でコピー
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            textarea.setSelectionRange(0, 99999); // モバイル対応
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    alert('✅ JSONをコピーしました（フォールバック方式）\\nmanual_events/ フォルダに貼り付けてください。');
+                } else {
+                    alert('❌ コピーに失敗しました。手動で選択してコピーしてください。');
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                alert('❌ 自動コピーに失敗しました。\\nJSONを手動で選択してCtrl+Cでコピーしてください。');
+            } finally {
                 document.body.removeChild(textarea);
-                alert('JSONをクリップボードにコピーしました！');
-            });
+            }
         }
         
         // Enterキーでパスワード認証
