@@ -1,4 +1,4 @@
-# scrapers/sunpalace.py - 福岡サンパレス イベントスクレイパー（修正版）
+# scrapers/sunpalace.py Ver.2.0 + DB投入機能
 import os
 import re
 import sys
@@ -7,11 +7,21 @@ import time
 import hashlib
 import requests
 from datetime import datetime, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from bs4 import BeautifulSoup
 
 from event_notify.utils.parser import split_and_normalize, JST
+
+# Supabase投入用（オプション）
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 # --- 設定 ---------------------------------------------------------------
 TARGET_URL = "https://www.f-sunpalace.com/hall/#hallEvent"
@@ -35,6 +45,23 @@ def determine_today() -> str:
     if override:
         return override
     return datetime.now(JST).strftime("%Y-%m-%d")
+
+def get_target_date_range() -> tuple[str, str]:
+    """当月1日～翌月末日の期間を取得（Ver.2.0用）"""
+    today = datetime.now(JST)
+    
+    # 当月1日
+    start_date = today.replace(day=1)
+    
+    # 翌月末日
+    next_month_first = start_date + relativedelta(months=1)
+    end_date = next_month_first + relativedelta(months=1) - timedelta(days=1)
+    
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+
+def filter_date_range(items: List[Dict], start_date: str, end_date: str) -> List[Dict]:
+    """指定期間内のイベントのみ抽出"""
+    return [e for e in items if start_date <= e.get("date", "") <= end_date]
 
 def normalize_text(text: str) -> str:
     """テキスト正規化"""
@@ -60,6 +87,56 @@ def create_hash(date: str, time: str, title: str, venue: str) -> str:
     """重複排除用ハッシュ生成"""
     key = f"{date}|{time or ''}|{normalize_text(title)}|{normalize_text(venue)}"
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
+
+# ---- SUPABASE FUNCTIONS -----------------------------------------------------
+def get_supabase_client() -> Client:
+    """Supabaseクライアントを取得"""
+    if not SUPABASE_AVAILABLE:
+        raise RuntimeError("Supabase依存関係が不足: pip install supabase python-dotenv")
+    
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise RuntimeError("環境変数 SUPABASE_URL, SUPABASE_KEY が設定されていません")
+    
+    return create_client(url, key)
+
+def save_to_supabase(events: List[Dict]) -> None:
+    """イベントデータをSupabaseに保存"""
+    if not events:
+        print(f"[sunpalace] DB投入: データなし")
+        return
+    
+    try:
+        supabase = get_supabase_client()
+        
+        # JSONからSupabase形式に変換
+        db_records = []
+        for event in events:
+            record = {
+                "date": event.get("date"),
+                "time": event.get("time"),  # NULLも許可
+                "title": event.get("title", ""),
+                "venue": event.get("venue", ""),
+                "source_url": event.get("source", ""),
+                "data_hash": event.get("hash", ""),
+                "event_type": "auto",
+                "notes": event.get("notes")  # NULLも許可
+            }
+            db_records.append(record)
+        
+        # バッチ挿入（重複は無視）
+        result = supabase.table('events').upsert(
+            db_records,
+            on_conflict="data_hash"  # 重複時は無視
+        ).execute()
+        
+        print(f"[sunpalace] DB投入成功: {len(result.data)}件")
+        
+    except Exception as e:
+        print(f"[sunpalace][ERROR] DB投入失敗: {e}")
+        # JSON保存は継続（DB失敗は致命的ではない）
 
 # --- 月別セクション分離（修正版）-------------------------------------------
 def extract_month_sections(soup: BeautifulSoup) -> List[Dict[str, Any]]:
@@ -309,17 +386,6 @@ def scrape_events() -> List[Dict[str, Any]]:
     
     return all_events
 
-def filter_today_only(events: List[Dict[str, Any]], target_date: str) -> List[Dict[str, Any]]:
-    """今日のイベントのみをフィルタ"""
-    filtered = [event for event in events if event.get("date") == target_date]
-    print(f"[sunpalace] Filtered events for {target_date}: {len(filtered)} out of {len(events)}")
-    
-    # デバッグ: フィルタされたイベントを表示
-    for event in filtered:
-        print(f"[sunpalace] Today's event: {event['date']} {event.get('time', 'N/A')} - {event['title']}")
-    
-    return filtered
-
 def save_to_storage(events: List[Dict[str, Any]], target_date: str) -> None:
     """ストレージにJSONとして保存"""
     file_path = _storage_path(target_date, VENUE_CODE)
@@ -352,23 +418,22 @@ def main():
         target_date = determine_today()
         print(f"[sunpalace] target_date={target_date}")
         
-        # スクレイピング実行
+        # スクレイピング実行（全期間）
         all_events = scrape_events()
         print(f"[sunpalace] scraped {len(all_events)} total events")
         
-        # 当日分のみフィルタ
-        include_future = os.getenv("SCRAPER_INCLUDE_FUTURE") == "1"
-        if include_future:
-            events_today = all_events
-            print(f"[sunpalace] including future events")
-        else:
-            events_today = filter_today_only(all_events, target_date)
-            print(f"[sunpalace] filtered to {len(events_today)} events for {target_date}")
+        # 期間範囲計算（当月1日～翌月末日）
+        start_date, end_date = get_target_date_range()
+        print(f"[sunpalace] Target range: {start_date} ~ {end_date}")
+
+        # 期間フィルタリング（当月1日～翌月末日）
+        events_filtered = filter_date_range(all_events, start_date, end_date)
+        print(f"[sunpalace] filtered to {len(events_filtered)} events for {start_date} ~ {end_date}")
         
         # 重複排除（parser.pyで処理済みだが念のため）
         seen_hashes = set()
         unique_events = []
-        for event in events_today:
+        for event in events_filtered:
             event_hash = event.get("hash")
             if event_hash and event_hash not in seen_hashes:
                 seen_hashes.add(event_hash)
@@ -379,9 +444,16 @@ def main():
         # 保存
         save_to_storage(unique_events, target_date)
         
+        # Supabase投入（Ver.2.0用・新機能）
+        db_enabled = os.getenv("ENABLE_DB_SAVE", "0") == "1"
+        if db_enabled and SUPABASE_AVAILABLE:
+            save_to_supabase(unique_events)
+        elif db_enabled:
+            print(f"[sunpalace] DB投入スキップ: Supabase依存関係不足")
+        
         # 実行時間計算
         elapsed_ms = int((time.time() - start_time) * 1000)
-        print(f"[sunpalace] date={target_date} items={len(unique_events)} ms={elapsed_ms} url=\"{TARGET_URL}\"")
+        print(f"[sunpalace] date={target_date} items={len(unique_events)} range={start_date}~{end_date} ms={elapsed_ms} url=\"{TARGET_URL}\"")
         
     except requests.RequestException as e:
         print(f"[sunpalace][ERROR] Network error: {e}")
