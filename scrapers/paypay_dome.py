@@ -1,46 +1,64 @@
-# scrapers/paypay_dome.py - 精密版
-import os, json, time, re, unicodedata, sys
+# scrapers/paypay_dome_events.py Ver.2.0 + 年跨ぎ対応 + DB投入機能
+import os
+import json
+import time
+import re
+import unicodedata
 from datetime import datetime, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict
-import requests
-from bs4 import BeautifulSoup
 from pathlib import Path
 
-# パスを追加してutilsをインポート
-sys.path.append(str(Path(__file__).parent.parent))
-try:
-    from utils.parser import JST
-except ImportError:
-    # JSTを直接定義
-    JST = timezone(timedelta(hours=9))
+import requests
+from bs4 import BeautifulSoup
 
-# ストレージディレクトリ
-STORAGE_DIR = Path(__file__).parent.parent / "storage"
-STORAGE_DIR.mkdir(exist_ok=True)
+# parser.pyから必要な機能をインポート
+from event_notify.utils.parser import split_and_normalize, JST
+
+# Supabase投入用（オプション）
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 # ---- META / SELECTORS -------------------------------------------------------
 META = {
-    "name": "paypay_dome",
+    "name": "paypay_dome_events",
     "venue": "みずほPayPayドーム",
-    "url": "https://baseball.yahoo.co.jp/npb/schedule/",
+    "url_template": "https://www.softbankhawks.co.jp/stadium/event_schedule/{year}/",
     "schema_version": "1.0",
-    "selector_profile": "yahoo sports precise date-based extraction",
+    "selector_profile": "structured HTML with date/event pairs; multi-year URL support",
 }
-URL = META["url"]
 VENUE = META["venue"]
 SCHEMA_VERSION = META["schema_version"]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (compatible; EventBot/1.0; +https://example.com/contact)"
 }
 
 # ---- UTILS ------------------------------------------------------------------
+def _storage_path(date_str: str, code: str) -> Path:
+    """共通のストレージパス生成（他のスクレイパーと統一）"""
+    root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
+    storage = root / "storage"
+    storage.mkdir(parents=True, exist_ok=True)
+    return storage / f"{date_str}_{code}.json"
+
 def sha1(s: str) -> str:
     import hashlib
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
 def _normalize_for_hash(s: str) -> str:
-    """ハッシュ用の軽量正規化"""
+    """
+    ハッシュ用の軽量正規化：
+      - NFKCで全角/半角を統一
+      - 引用符ゆれを統一
+      - 連続空白を1つに圧縮
+      - 前後空白削除
+    """
     if s is None:
         return ""
     x = unicodedata.normalize("NFKC", s)
@@ -50,320 +68,346 @@ def _normalize_for_hash(s: str) -> str:
     return x
 
 def resolve_target_date() -> str:
-    """環境変数でターゲット日付を上書き可能。未指定ならJST今日"""
+    """環境変数でターゲット日付を上書き可能（YYYY-MM-DD）。未指定ならJST今日"""
     override = os.getenv("SCRAPER_TARGET_DATE")
     if override:
         return override
     return datetime.now(JST).strftime("%Y-%m-%d")
 
-def filter_today_only(items: List[Dict], target_date: str) -> List[Dict]:
-    """正規化後のitemsから、JST target_date のみを残す"""
-    return [e for e in items if e.get("date") == target_date]
+def get_target_date_range() -> tuple[str, str]:
+    """当月1日～翌月末日の期間を取得（Ver.2.0用）"""
+    today = datetime.now(JST)
+    
+    # 当月1日
+    start_date = today.replace(day=1)
+    
+    # 翌月末日
+    next_month_first = start_date + relativedelta(months=1)
+    end_date = next_month_first + relativedelta(months=1) - timedelta(days=1)
+    
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
-# ---- YAHOO SPORTS PRECISE SCRAPING -----------------------------------------
-def scrape_yahoo_baseball_precise() -> List[Dict]:
-    """Yahoo!スポーツから今日のソフトバンク戦を日付ヘッダー基準で精密取得"""
+def filter_date_range(items: List[Dict], start_date: str, end_date: str) -> List[Dict]:
+    """指定期間内のイベントのみ抽出"""
+    return [e for e in items if start_date <= e.get("date", "") <= end_date]
+
+# ---- SUPABASE FUNCTIONS -----------------------------------------------------
+def get_supabase_client() -> Client:
+    """Supabaseクライアントを取得"""
+    if not SUPABASE_AVAILABLE:
+        raise RuntimeError("Supabase依存関係が不足: pip install supabase python-dotenv")
+    
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise RuntimeError("環境変数 SUPABASE_URL, SUPABASE_KEY が設定されていません")
+    
+    return create_client(url, key)
+
+def save_to_supabase(events: List[Dict]) -> None:
+    """イベントデータをSupabaseに保存"""
+    if not events:
+        print(f"[{META['name']}] DB投入: データなし")
+        return
+    
     try:
-        print(f"[paypay_dome] Accessing Yahoo Sports: {URL}")
-        r = requests.get(URL, headers=HEADERS, timeout=15)
+        supabase = get_supabase_client()
+        
+        # JSONからSupabase形式に変換
+        db_records = []
+        for event in events:
+            record = {
+                "date": event.get("date"),
+                "time": event.get("time"),  # NULLも許可
+                "title": event.get("title", ""),
+                "venue": event.get("venue", ""),
+                "source_url": event.get("source", ""),
+                "data_hash": event.get("hash", ""),
+                "event_type": "auto",
+                "notes": event.get("notes")  # NULLも許可
+            }
+            db_records.append(record)
+        
+        # バッチ挿入（重複は無視）
+        result = supabase.table('events').upsert(
+            db_records,
+            on_conflict="data_hash"  # 重複時は無視
+        ).execute()
+        
+        print(f"[{META['name']}] DB投入成功: {len(result.data)}件")
+        
+    except Exception as e:
+        print(f"[{META['name']}][ERROR] DB投入失敗: {e}")
+        # JSON保存は継続（DB失敗は致命的ではない）
+
+def parse_paypay_date(date_str: str) -> str:
+    """
+    "2025/9/13（土）" → "2025-09-13"
+    """
+    # 基本パターン: 2025/9/13
+    match = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})（.+）', date_str.strip())
+    if match:
+        year, month, day = match.groups()
+        return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    return None
+
+def extract_event_time(time_str: str) -> str:
+    """
+    PayPayドーム固有の時刻抽出:
+    "開催時間 11:00～19:00" → "11:00"
+    "開演時間 開場 16:00 開演 18:00" → "18:00"
+    """
+    if not time_str:
+        return None
+    
+    # パターン1: 開催時間 11:00～19:00（開始時刻を抽出）
+    schedule_match = re.search(r'開催時間\s*(\d{1,2}:\d{2})', time_str)
+    if schedule_match:
+        return schedule_match.group(1)
+    
+    # パターン2: 開演時間 開場 XX:XX 開演 YY:YY（開演優先）
+    start_match = re.search(r'開演\s*(\d{1,2}:\d{2})', time_str)
+    if start_match:
+        return start_match.group(1)
+    
+    # パターン3: 開場時刻のみ
+    open_match = re.search(r'開場\s*(\d{1,2}:\d{2})', time_str)
+    if open_match:
+        return open_match.group(1)
+    
+    # パターン4: 一般的な時刻パターン（HH:MM）
+    time_match = re.search(r'(\d{1,2}:\d{2})', time_str)
+    if time_match:
+        return time_match.group(1)
+    
+    return None  # 時刻未定
+
+def extract_event_title(title_str: str) -> str:
+    """
+    "[acosta!@みずほPayPayドーム福岡](https://acosta.jp/...)" 
+    → "acosta!@みずほPayPayドーム福岡"
+    """
+    # [タイトル](URL) パターンから抽出
+    match = re.search(r'\[([^\]]+)\]', title_str)
+    if match:
+        return match.group(1).strip()
+    
+    # マークダウンリンクでない場合はそのまま返す
+    return title_str.strip()
+
+# ---- SCRAPING ---------------------------------------------------------------
+def fetch_year_events(url: str, year: int) -> List[Dict]:
+    """指定年のPayPayドームイベント情報を取得"""
+    try:
+        print(f"[{META['name']}] Fetching {year} from {url}")
+        r = requests.get(url, headers=HEADERS, timeout=15)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-        
-        today = datetime.now(JST)
-        today_str = format_japanese_date(today)  # "9月3日"
-        
-        print(f"[paypay_dome] Looking for date: {today_str}")
+
+        print(f"[DEBUG] HTTP Status: {r.status_code}")
+        print(f"[DEBUG] Content length: {len(r.text)}")
         
         events = []
         
-        # 1) 今日の日付ヘッダーを探す
-        date_header = find_today_date_header(soup, today_str)
-        if not date_header:
-            print(f"[paypay_dome] No date header found for {today_str}")
-            return []
+        # 正しいHTML構造に基づく抽出
+        # dl.temp_calendarList > dt（日付）+ dd（詳細）のペア
+        calendar_lists = soup.find_all('dl', class_='temp_calendarList')
+        print(f"[DEBUG] Found {len(calendar_lists)} calendar lists for {year}")
         
-        print(f"[paypay_dome] Found date header: {date_header.name}.{date_header.get('class', [])}")
+        for calendar in calendar_lists:
+            # dt（日付）とdd（詳細）のペアを処理
+            dt_elements = calendar.find_all('dt')
+            dd_elements = calendar.find_all('dd')
+            
+            print(f"[DEBUG] Found {len(dt_elements)} dates and {len(dd_elements)} details")
+            
+            # dtとddのペアを処理
+            for dt, dd in zip(dt_elements, dd_elements):
+                date_text = dt.get_text().strip()
+                print(f"[DEBUG] Processing date: {date_text}")
+                
+                # 日付パターンの確認
+                if not re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', date_text):
+                    print(f"[DEBUG] Date pattern not matched: {date_text}")
+                    continue
+                
+                # table内からイベント情報を抽出
+                table = dd.find('table')
+                if not table:
+                    print(f"[DEBUG] No table found for date: {date_text}")
+                    continue
+                
+                event_title = None
+                event_time = None
+                
+                # tableの行を解析
+                rows = table.find_all('tr')
+                for row in rows:
+                    th = row.find('th')
+                    td = row.find('td')
+                    
+                    if not th or not td:
+                        continue
+                    
+                    th_text = th.get_text().strip()
+                    td_text = td.get_text().strip()
+                    
+                    if th_text == 'イベント':
+                        # span要素があればその中身、なければtd全体
+                        span = td.find('span')
+                        event_title = span.get_text().strip() if span else td_text
+                        
+                    elif th_text in ['開催時間', '開演時間']:
+                        event_time = td_text
+                
+                if event_title:
+                    print(f"[DEBUG] Found event: {date_text} | {event_title} | {event_time}")
+                    events.append({
+                        "date_raw": date_text,
+                        "title_raw": event_title,
+                        "time_raw": event_time or "",
+                        "source_year": year
+                    })
+                else:
+                    print(f"[DEBUG] No event title found for date: {date_text}")
         
-        # 2) そのヘッダーに対応する試合データを取得
-        today_games = extract_games_from_date_section(date_header, today)
+        print(f"[DEBUG] Total events extracted from {year}: {len(events)}")
+        return events
         
-        print(f"[paypay_dome] Found {len(today_games)} games for today")
-        return today_games
-        
+    except requests.RequestException as e:
+        print(f"[{META['name']}] Failed to fetch {year}: HTTP error: {e}")
+        return []
     except Exception as e:
-        print(f"[paypay_dome] Yahoo baseball scraping error: {e}")
+        print(f"[{META['name']}] Failed to fetch {year}: {e}")
         return []
 
-def format_japanese_date(dt: datetime) -> str:
-    """datetime を日本語日付形式に変換 2025-09-03 -> 9月3日"""
-    return f"{dt.month}月{dt.day}日"
-
-def find_today_date_header(soup, today_str: str):
-    """今日の日付ヘッダーを探す"""
-    # th要素で探す（テーブル内のヘッダー）
-    th_headers = soup.find_all('th', string=lambda text: text and today_str in text)
-    if th_headers:
-        print(f"[paypay_dome] Found th header: {th_headers[0].get_text(strip=True)}")
-        return th_headers[0]
+def fetch_multi_year_events() -> List[Dict]:
+    """年跨ぎ対応: 必要に応じて複数年のイベント情報を取得"""
+    start_date, end_date = get_target_date_range()
     
-    # h2要素で探す（セクションヘッダー）
-    h2_headers = soup.find_all('h2', string=lambda text: text and today_str in text)
-    if h2_headers:
-        print(f"[paypay_dome] Found h2 header: {h2_headers[0].get_text(strip=True)}")
-        return h2_headers[0]
+    # 開始年と終了年を判定
+    start_year = int(start_date[:4])
+    end_year = int(end_date[:4])
     
-    return None
-
-def extract_games_from_date_section(date_header, today: datetime) -> List[Dict]:
-    """日付ヘッダーから対応する試合データを抽出"""
-    games = []
+    print(f"[{META['name']}] Target range: {start_date} ~ {end_date} (years: {start_year}~{end_year})")
     
-    if date_header.name == 'th':
-        # th要素の場合：同じテーブル内で、そのthの後の行を取得
-        games = extract_games_from_table_header(date_header, today)
-    elif date_header.name == 'h2':
-        # h2要素の場合：次のセクション内のテーブルを取得
-        games = extract_games_from_section_header(date_header, today)
-    
-    return games
-
-def extract_games_from_table_header(th_header, today: datetime) -> List[Dict]:
-    """thヘッダー後の同一テーブル内の試合を抽出"""
-    games = []
-    
-    # thの親のtr要素を取得
-    tr = th_header.find_parent('tr')
-    if not tr:
-        return games
-    
-    # そのtr要素の後続のtr要素を取得
-    next_trs = []
-    current = tr.find_next_sibling('tr')
-    
-    while current:
-        text = current.get_text(' ', strip=True)
-        
-        # 新しい日付ヘッダーが出現したら停止
-        if re.search(r'\d+月\d+日', text) and '（' in text:
-            break
-            
-        # ソフトバンク戦があれば処理
-        if 'ソフトバンク' in text and 'みずほPayPay' in text:
-            game = parse_precise_game(current, today)
-            if game:
-                print(f"[paypay_dome] Table game extracted: {game['title']} at {game.get('time', 'TBA')}")
-                games.append(game)
-        
-        current = current.find_next_sibling('tr')
-        
-        # 安全弁：最大10行まで
-        if len(next_trs) > 10:
-            break
-            
-        next_trs.append(current)
-    
-    return games
-
-def extract_games_from_section_header(h2_header, today: datetime) -> List[Dict]:
-    """h2ヘッダー後のセクション内の試合を抽出"""
-    games = []
-    
-    # h2の次の要素から順次探索
-    current = h2_header.find_next_sibling()
-    
-    while current:
-        # 新しいh2が出現したら停止
-        if current.name == 'h2':
-            break
-            
-        # テーブルがあれば中身をチェック
-        if current.name == 'table':
-            rows = current.select('tr')
-            for row in rows:
-                text = row.get_text(' ', strip=True)
-                if 'ソフトバンク' in text and 'みずほPayPay' in text:
-                    game = parse_precise_game(row, today)
-                    if game:
-                        print(f"[paypay_dome] Section game extracted: {game['title']} at {game.get('time', 'TBA')}")
-                        games.append(game)
-        
-        current = current.find_next_sibling()
-        
-        # 安全弁
-        if not current:
-            break
-    
-    return games
-
-def parse_precise_game(row, today: datetime) -> Dict:
-    """行から試合情報を精密解析（試合結果も含む）"""
-    cells = row.select('td, th')
-    if len(cells) < 2:
-        return None
-    
-    main_content = cells[0].get_text(' ', strip=True)
-    venue_content = cells[1].get_text(' ', strip=True)
-    
-    # venue確認（みずほPayPayドームでなければ除外）
-    if 'みずほPayPay' not in venue_content:
-        return None
-    
-    # 試合状況を判定
-    game_status = "試合前"
-    if '試合終了' in main_content:
-        game_status = "試合終了"
-        print(f"[paypay_dome] Found finished game: {main_content[:50]}")
-    elif '試合前' in main_content:
-        print(f"[paypay_dome] Found upcoming game: {main_content[:50]}")
-    
-    # 時刻を抽出
-    time_match = re.search(r'(\d{1,2}:\d{2})', main_content)
-    game_time = None
-    if time_match:
-        time_str = time_match.group(1)
-        hour, minute = time_str.split(':')
-        game_time = f"{int(hour):02d}:{int(minute):02d}"
-    
-    # 対戦相手を特定
-    opponents = ['オリックス', 'ロッテ', '楽天', '日本ハム', '西武', '巨人', '阪神', 'ヤクルト', '広島', 'DeNA', '中日']
-    opponent = None
-    for team in opponents:
-        if team in main_content:
-            opponent = team
-            break
-    
-    if not opponent:
-        print(f"[paypay_dome] No opponent found in: {main_content}")
-        return None
-    
-    title = f"福岡ソフトバンクホークス vs {opponent}"
-    
-    # 試合結果の場合はスコアを抽出
-    score_info = None
-    if game_status == "試合終了":
-        score_match = re.search(r'(\d+)\s*-\s*(\d+)', main_content)
-        if score_match:
-            hawks_score, opponent_score = score_match.groups()
-            score_info = f"{hawks_score}-{opponent_score}"
-    
-    return {
-        "date": today.strftime("%Y-%m-%d"),
-        "time": game_time,
-        "title": title,
-        "venue": VENUE,
-        "game_status": game_status,  # 試合前 or 試合終了
-        "score": score_info,  # 試合終了の場合のみ
-        "raw_data": main_content,
-        "for_notification": game_status == "試合前"  # 通知対象フラグ
-    }
-
-# ---- MAIN SCRAPING LOGIC ---------------------------------------------------
-def fetch_raw_events() -> List[Dict]:
-    """精密な野球試合取得"""
     all_events = []
     
-    # Yahoo!スポーツから精密に野球試合を取得
-    print("[paypay_dome] Fetching baseball games with precise date filtering...")
-    baseball_events = scrape_yahoo_baseball_precise()
-    all_events.extend(baseball_events)
-    print(f"[paypay_dome] Precise baseball games: {len(baseball_events)}")
+    # 必要な年のURLを取得
+    for year in range(start_year, end_year + 1):
+        url = META["url_template"].format(year=year)
+        year_events = fetch_year_events(url, year)
+        all_events.extend(year_events)
     
     return all_events
+
+def normalize_events(raw_events: List[Dict]) -> List[Dict]:
+    """生データを正規化してevent_notify形式に変換（PayPayドーム専用処理）"""
+    normalized = []
+    
+    for raw in raw_events:
+        # 日付正規化: "2025/9/13（土）" → "2025-09-13"
+        date = parse_paypay_date(raw["date_raw"])
+        if not date:
+            continue
+        
+        # 時刻抽出: "開催時間 11:00～19:00" → "11:00"
+        time_extracted = extract_event_time(raw["time_raw"])
+        
+        # タイトル抽出
+        title = extract_event_title(raw["title_raw"])
+        
+        normalized.append({
+            "date": date,
+            "time": time_extracted,
+            "title": title,
+            "venue": VENUE,
+            "event_type": "event"  # 野球と区別
+        })
+    
+    return normalized
 
 # ---- MAIN -------------------------------------------------------------------
 def main():
     t0 = time.time()
-    
-    target_date = resolve_target_date()
-    include_future = os.getenv("SCRAPER_INCLUDE_FUTURE") == "1"
-    
-    try:
-        print(f"[{META['name']}] target_date={target_date}")
-        
-        # 1) 精密取得
-        raw = fetch_raw_events()
-        
-        # 2) 当日抽出（冗長化）
-        items = raw if include_future else filter_today_only(raw, target_date)
-        
-        # 3) データ検証：同じ時刻に複数の対戦相手がいる場合は警告
-        validate_game_data(items)
-        
-        # 4) 重複排除＆メタ付与
-        seen = set()
-        out: List[Dict] = []
-        extracted_at = datetime.now(JST).isoformat()
-        
-        for it in items:
-            title_norm = _normalize_for_hash(it.get("title", ""))
-            venue_norm = _normalize_for_hash(it.get("venue", ""))
-            date_part = it.get("date", "")
-            time_part = it.get("time") or ""  # None→空
-            
-            key = f"{date_part}|{time_part}|{title_norm}|{venue_norm}"
-            h = sha1(key)
-            if h in seen:
-                continue
-            seen.add(h)
-            
-            # raw_dataは出力JSONから除外
-            clean_item = {k: v for k, v in it.items() if k != "raw_data"}
-            
-            out.append({
-                "schema_version": SCHEMA_VERSION,
-                **clean_item,  # date / time / title / venue
-                "source": URL,
-                "hash": h,
-                "extracted_at": extracted_at,
-            })
-        
-        # 5) 並び替え（date, time, title）
-        def _sort_key(ev: Dict):
-            t = ev.get("time")
-            tkey = t if (t and re.fullmatch(r"\d{2}:\d{2}", t)) else "99:99"
-            return (ev.get("date", ""), tkey, ev.get("title", ""))
-        
-        out.sort(key=_sort_key)
-        
-        # 6) JSON保存
-        path = STORAGE_DIR / f"{target_date}_f.json"
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, indent=2)
-        
-        ms = int((time.time() - t0) * 1000)
-        print(f"[{META['name']}] date={target_date} items={len(out)} ms={ms} method=yahoo_precise url=\"{URL}\" → {path}")
-        
-    except requests.RequestException as e:
-        print(f"[{META['name']}][ERROR] Network error: {e}")
-    except Exception as e:
-        msg = str(e).replace("\n", " ").strip()
-        print(f"[{META['name']}][ERROR] msg=\"{msg}\" url=\"{URL}\"")
 
-def validate_game_data(items: List[Dict]):
-    """データ検証：不正な重複をチェック"""
-    if len(items) == 0:
-        print("[paypay_dome] WARNING: No games found for today")
-        return
+    target_date = resolve_target_date()
     
-    # 同じ時刻に複数の対戦相手がいる場合は警告
-    time_opponents = {}
-    for item in items:
-        time_key = item.get("time", "無時刻")
-        if time_key not in time_opponents:
-            time_opponents[time_key] = []
-        time_opponents[time_key].append(item.get("title", ""))
-    
-    for time_key, titles in time_opponents.items():
-        if len(titles) > 1:
-            print(f"[paypay_dome] WARNING: Multiple opponents at {time_key}: {titles}")
-        else:
-            print(f"[paypay_dome] OK: {time_key} - {titles[0]}")
+    print(f"[{META['name']}] target_date={target_date}")
+
+    # 1) 全期間データ取得（年跨ぎ対応）
+    raw = fetch_multi_year_events()
+    print(f"[{META['name']}] scraped {len(raw)} total events")
+
+    # 2) 正規化
+    normalized = normalize_events(raw)
+    print(f"[{META['name']}] normalized to {len(normalized)} events")
+
+    # 期間範囲計算（当月1日～翌月末日）
+    start_date, end_date = get_target_date_range()
+    print(f"[{META['name']}] Target range: {start_date} ~ {end_date}")
+
+    # 3) 期間フィルタリング（当月1日～翌月末日）
+    items = filter_date_range(normalized, start_date, end_date)
+    print(f"[{META['name']}] filtered to {len(items)} events for {start_date} ~ {end_date}")
+
+    # 4) 重複排除＆メタ付与（全期間データ - Ver.2.0用）
+    seen = set()
+    out: List[Dict] = []
+    extracted_at = datetime.now(JST).isoformat()
+
+    for it in items:
+        title_norm = _normalize_for_hash(it.get("title", ""))
+        venue_norm = _normalize_for_hash(it.get("venue", ""))
+        date_part = it.get("date", "")
+        time_part = it.get("time") or ""
+
+        key = f"{date_part}|{time_part}|{title_norm}|{venue_norm}"
+        h = sha1(key)
+        if h in seen:
+            continue
+        seen.add(h)
+
+        # 年跨ぎ対応でsource URLを動的生成
+        event_year = int(date_part[:4])
+        source_url = META["url_template"].format(year=event_year)
+
+        out.append({
+            "schema_version": SCHEMA_VERSION,
+            **it,
+            "source": source_url,
+            "hash": h,
+            "extracted_at": extracted_at,
+        })
+
+    # 5) 並び替え
+    def _sort_key(ev: Dict):
+        t = ev.get("time")
+        tkey = t if (t and re.fullmatch(r"\d{2}:\d{2}", t)) else "99:99"
+        return (ev.get("date", ""), tkey, ev.get("title", ""))
+
+    out.sort(key=_sort_key)
+
+    # 6) JSON保存（storage/{target_date}_f_event.json）— Ver.2.0: 全期間データを保存
+    path = _storage_path(target_date, "f_event")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+
+    # 7) Supabase投入（Ver.2.0用・新機能）
+    db_enabled = os.getenv("ENABLE_DB_SAVE", "0") == "1"
+    if db_enabled and SUPABASE_AVAILABLE:
+        save_to_supabase(out)
+    elif db_enabled:
+        print(f"[{META['name']}] DB投入スキップ: Supabase依存関係不足")
+
+    ms = int((time.time() - t0) * 1000)
+    print(f"[{META['name']}] date={target_date} items={len(out)} range={start_date}~{end_date} ms={ms} → {path}")
 
 if __name__ == "__main__":
     try:
         main()
-    except KeyboardInterrupt:
-        print(f"[{META['name']}] Interrupted by user")
     except Exception as e:
-        print(f"[{META['name']}][ERROR] Unexpected error: {e}")
+        msg = str(e).replace("\n", " ").strip()
+        print(f"[{META['name']}][ERROR] msg=\"{msg}\"")
         time.sleep(1)
