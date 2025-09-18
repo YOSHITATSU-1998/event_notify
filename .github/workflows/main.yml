@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.1.8 - Manual Event Support (Fixed)
+name: Daily Scraper & Dispatch Ver.2.0 - DB Integration
 on:
   workflow_dispatch:
     inputs:
@@ -12,13 +12,11 @@ on:
           - pages-only
           - slack-only
   schedule:
-    - cron: '30 15 * * *'   # JST 00:30 - Pages更新
-    - cron: '0 21 * * *'    # JST 06:00 - Slack通知
+    - cron: '30 15 * * *'   # JST 00:30 - Pages更新 + Slack通知（統一）
 
 jobs:
-  pages-update:
+  unified-update:
     runs-on: ubuntu-latest
-    if: github.event.schedule == '30 15 * * *' || github.event_name == 'workflow_dispatch' && (github.event.inputs.job_type == 'both' || github.event.inputs.job_type == 'pages-only')
     permissions:
       contents: read
       pages: write
@@ -26,7 +24,12 @@ jobs:
     env:
       TZ: Asia/Tokyo
       PYTHONPATH: ${{ github.workspace }}/..
-      MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}  # Ver.1.8追加
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+      MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}
+      ENABLE_DB_SAVE: "1"                    # Ver.2.0: DB投入有効化
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}      # Ver.2.0: DB接続情報
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}      # Ver.2.0: DB接続情報
     
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +45,14 @@ jobs:
           python -m pip install -U pip
           if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
       
-      - name: Install Playwright (Ver.1.8 - PayPay events support)
+      # Ver.2.0: Supabase依存関係追加
+      - name: Install Ver.2.0 dependencies
+        run: |
+          pip install supabase>=1.0.0
+          pip install python-dotenv>=0.19.0
+          pip install python-dateutil>=2.8.0
+      
+      - name: Install Playwright (PayPay events support)
         run: |
           pip install playwright>=1.40.0
           playwright install chromium
@@ -57,17 +67,17 @@ jobs:
       - name: Debug environment
         run: |
           echo "Working directory: $(pwd)"
+          echo "Ver.2.0 Environment Variables:"
+          echo "ENABLE_DB_SAVE: $ENABLE_DB_SAVE"
+          echo "SUPABASE_URL: ${SUPABASE_URL:0:20}..." # 最初20文字のみ表示
           echo "Directory structure:"
-          ls -la
           ls -la event_notify/
-          echo "Python path test:"
-          python -c "import sys; print('sys.path:', sys.path[:3])"
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.1.8 - 8 venue system for Pages)
+      - name: Run scrapers (Ver.2.0 - 8 venue system with 2-month data + DB integration)
         run: |
           set -e
-          echo "🌙 Pages更新用スクレイピング開始 - $(date)"
+          echo "🌙 Ver.2.0 スクレイピング開始（2ヶ月分データ + DB投入） - $(date)"
           python -m event_notify.scrapers.marinemesse_a
           python -m event_notify.scrapers.marinemesse_b  
           python -m event_notify.scrapers.kokusai_center
@@ -76,7 +86,7 @@ jobs:
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
           python -m event_notify.scrapers.best_denki_stadium
-          echo "✅ Pages用スクレイピング完了（8会場）"
+          echo "✅ Ver.2.0 スクレイピング完了（8会場、2ヶ月分データ、DB投入済み）"
       
       - name: Generate HTML for web (index.html + manual.html)
         run: |
@@ -89,23 +99,14 @@ jobs:
           ls -la ../site/
           echo "✅ HTML生成完了"
       
-      # Ver.1.8修正: HTML生成後にパスワード置換
       - name: Replace password in manual.html
         run: |
           echo "🔐 パスワード置換開始"
           if [ -f site/manual.html ]; then
-            echo "Before replacement:"
-            grep "PLACEHOLDER_PASSWORD" site/manual.html | head -1 || echo "No PLACEHOLDER_PASSWORD found"
-            
-            # パスワード置換実行
             sed -i "s/PLACEHOLDER_PASSWORD/${{ secrets.MANUAL_PASSWORD }}/g" site/manual.html
-            
-            echo "After replacement:"
-            grep "${{ secrets.MANUAL_PASSWORD }}\|correctPassword" site/manual.html | head -1 || echo "Password replacement may have failed"
-            
-            echo "✅ パスワード置換完了: PLACEHOLDER_PASSWORD → [PROTECTED]"
+            echo "✅ パスワード置換完了"
           else
-            echo "❌ manual.html not found in site/ directory"
+            echo "❌ manual.html not found"
             ls -la site/
           fi
         env:
@@ -132,8 +133,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra
-          echo "Installed fonts:"
-          fc-list | grep -i noto | head -5
       
       - name: Install Node.js dependencies
         run: |
@@ -154,73 +153,18 @@ jobs:
           path: event_notify/screenshots/*.jpeg
           retention-days: 90
       
-      - name: Pages update completion log
+      - name: Prepare manual events for dispatch
         run: |
-          echo "🎉 Pages更新完了 - $(date)"
-          echo "📱 URL: ${{ steps.deployment.outputs.page_url }}"
-          echo "📊 対応会場: 8会場（ベスト電器スタジアム追加）"
-          echo "🔐 手動イベント追加: manual.html対応（パスワード置換済み）"
-          echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
-
-  slack-notify:
-    runs-on: ubuntu-latest
-    if: github.event.schedule == '0 21 * * *' || github.event_name == 'workflow_dispatch' && (github.event.inputs.job_type == 'both' || github.event.inputs.job_type == 'slack-only')
-    env:
-      TZ: Asia/Tokyo
-      PYTHONPATH: ${{ github.workspace }}/..
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-      MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}  # Ver.1.8追加
-    
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: event_notify
-      
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install -U pip
-          if [ -f event_notify/requirements.txt ]; then pip install -r event_notify/requirements.txt; fi
-      
-      - name: Install Playwright (Ver.1.8 - PayPay events support)
-        run: |
-          pip install playwright>=1.40.0
-          playwright install chromium
-      
-      - name: Ensure __init__.py files
-        run: |
-          touch event_notify/__init__.py
-          touch event_notify/scrapers/__init__.py
-          touch event_notify/utils/__init__.py
-          touch event_notify/notify/__init__.py
-      
-      - name: Debug environment
-        run: |
-          echo "Working directory: $(pwd)"
-          echo "Directory structure:"
-          ls -la
-          ls -la event_notify/
-          echo "Python path test:"
-          python -c "import sys; print('sys.path:', sys.path[:3])"
-          python -c "import event_notify; print('✅ event_notify import OK')"
-      
-      - name: Run scrapers (Ver.1.8 - 8 venue system for Slack)
-        run: |
-          set -e
-          echo "🌅 Slack通知用スクレイピング開始 - $(date)"
-          python -m event_notify.scrapers.marinemesse_a
-          python -m event_notify.scrapers.marinemesse_b  
-          python -m event_notify.scrapers.kokusai_center
-          python -m event_notify.scrapers.congress_b
-          python -m event_notify.scrapers.sunpalace
-          python -m event_notify.scrapers.paypay_dome
-          python -m event_notify.scrapers.paypay_dome_events
-          python -m event_notify.scrapers.best_denki_stadium
-          echo "✅ Slack用スクレイピング完了（8会場）"
+          echo "📝 手動イベント準備"
+          cd event_notify
+          mkdir -p manual_events
+          if [ ! -f manual_events/oneshot.json ]; then
+            echo "[]" > manual_events/oneshot.json
+          fi
+          if [ ! -f manual_events/recurring.json ]; then
+            echo "[]" > manual_events/recurring.json
+          fi
+          echo "📂 Manual events directory ready"
       
       - name: Get Pages URL for notification
         run: |
@@ -228,38 +172,22 @@ jobs:
           REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2)
           echo "GITHUB_PAGES_URL=https://${REPO_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_ENV
       
-      # Ver.1.8新機能: 手動イベント対応
-      - name: Prepare manual events for dispatch
-        run: |
-          echo "📝 手動イベント準備"
-          cd event_notify
-          # manual_events フォルダが存在しない場合は作成
-          mkdir -p manual_events
-          # サンプルファイルがない場合は空配列で作成
-          if [ ! -f manual_events/oneshot.json ]; then
-            echo "[]" > manual_events/oneshot.json
-            echo "✅ oneshot.json created"
-          fi
-          if [ ! -f manual_events/recurring.json ]; then
-            echo "[]" > manual_events/recurring.json
-            echo "✅ recurring.json created"
-          fi
-          echo "📂 Manual events directory ready"
-          ls -la manual_events/
-      
-      - name: Dispatch notification
+      - name: Dispatch notification (0:30 unified schedule)
         run: |
           set -e
-          echo "📢 Slack通知開始"
+          echo "📢 統一スケジュール通知開始 - $(date)"
           cd event_notify
           python -m notify.dispatch
-          echo "✅ Slack通知完了"
+          echo "✅ 統一スケジュール通知完了"
         env:
           GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
-      - name: Slack notification completion log
+      - name: Ver.2.0 completion log
         run: |
-          echo "🎉 Slack通知完了 - $(date)"
-          echo "📱 Pages URL: ${{ env.GITHUB_PAGES_URL }}"
-          echo "📊 対応会場: 8会場（ベスト電器スタジアム対応）"
+          echo "🎉 Ver.2.0 実行完了 - $(date)"
+          echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📊 対応会場: 8会場（2ヶ月分データ蓄積）"
+          echo "🗄️ データベース: Supabase投入完了"
           echo "📝 手動イベント: manual_events/対応"
+          echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
+          echo "⏰ 統一スケジュール: 0:30 JST (Pages + Slack)"
