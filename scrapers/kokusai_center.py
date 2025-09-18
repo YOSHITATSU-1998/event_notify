@@ -1,9 +1,12 @@
-# scrapers/kokusai_center.py
+# scrapers/kokusai_center.py Ver.2.0 + DB投入機能
 import os
 import json
 import time
 import hashlib
-from datetime import datetime
+import unicodedata
+import re
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict
 from pathlib import Path
 
@@ -12,18 +15,28 @@ from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from event_notify.utils.parser import split_and_normalize, JST  # 正規化＆展開は共通関数に委譲
+from event_notify.utils.parser import split_and_normalize, JST
+
+# Supabase投入用（オプション）
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 # ---- メタ情報（変更に強いヘッダ部） -----------------------------------------
 META = {
     "name": "kokusai_center",
     "venue": "福岡国際センター",
-    "venue_code": "c",  # ファイル名に使用（storage/{date}_c.json）
+    "venue_code": "c",
     "url": "https://www.marinemesse.or.jp/kokusai/event/",
     "schema_version": "1.0",
     "selector_profile": "primary: table.table_list01>tr / fallback: table>tr (2+ tds)",
 }
 
+BASE_URL = META["url"]
 SELECTORS = {
     "primary_rows": "table.table_list01 tr",
     "fallback_rows": "table tr",
@@ -49,7 +62,7 @@ HEADERS = {
 DEBUG = os.getenv("DEBUG_IC", "0") == "1"
 
 def _storage_path(date_str: str, code: str) -> Path:
-    """共通のストレージパス生成（他のスクレイパーと統一）"""
+    """共通のストレージパス生成"""
     root = Path(__file__).resolve().parents[1]  # repo root (= event_notify/)
     storage = root / "storage"
     storage.mkdir(parents=True, exist_ok=True)
@@ -57,6 +70,90 @@ def _storage_path(date_str: str, code: str) -> Path:
 
 def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+def _normalize_for_hash(s: str) -> str:
+    """ハッシュ用の軽量正規化"""
+    if s is None:
+        return ""
+    x = unicodedata.normalize("NFKC", s)
+    x = x.replace(""", '"').replace(""", '"').replace("‟", '"').replace("〝", '"').replace("〞", '"')
+    x = x.replace("'", "'").replace("'", "'").replace("＇", "'")
+    x = re.sub(r"\s+", " ", x).strip()
+    return x
+
+def get_target_date_range() -> tuple[str, str]:
+    """当月1日～翌月末日の期間を取得（Ver.2.0用）"""
+    today = datetime.now(JST)
+    
+    # 当月1日
+    start_date = today.replace(day=1)
+    
+    # 翌月末日
+    next_month_first = start_date + relativedelta(months=1)
+    end_date = next_month_first + relativedelta(months=1) - timedelta(days=1)
+    
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+
+def filter_date_range(items: List[Dict], start_date: str, end_date: str) -> List[Dict]:
+    """指定期間内のイベントのみ抽出"""
+    return [e for e in items if start_date <= e.get("date", "") <= end_date]
+
+def _resolve_target_date() -> str:
+    """JST基準のターゲット日（上書き可）"""
+    override = os.getenv("SCRAPER_TARGET_DATE")
+    if override:
+        return override
+    return datetime.now(JST).strftime("%Y-%m-%d")
+
+# ---- SUPABASE FUNCTIONS -----------------------------------------------------
+def get_supabase_client() -> Client:
+    """Supabaseクライアントを取得"""
+    if not SUPABASE_AVAILABLE:
+        raise RuntimeError("Supabase依存関係が不足: pip install supabase python-dotenv")
+    
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise RuntimeError("環境変数 SUPABASE_URL, SUPABASE_KEY が設定されていません")
+    
+    return create_client(url, key)
+
+def save_to_supabase(events: List[Dict]) -> None:
+    """イベントデータをSupabaseに保存"""
+    if not events:
+        print(f"[{META['name']}] DB投入: データなし")
+        return
+    
+    try:
+        supabase = get_supabase_client()
+        
+        # JSONからSupabase形式に変換
+        db_records = []
+        for event in events:
+            record = {
+                "date": event.get("date"),
+                "time": event.get("time"),  # NULLも許可
+                "title": event.get("title", ""),
+                "venue": event.get("venue", ""),
+                "source_url": event.get("source", ""),
+                "data_hash": event.get("hash", ""),
+                "event_type": "auto",
+                "notes": event.get("notes")  # NULLも許可
+            }
+            db_records.append(record)
+        
+        # バッチ挿入（重複は無視）
+        result = supabase.table('events').upsert(
+            db_records,
+            on_conflict="data_hash"  # 重複時は無視
+        ).execute()
+        
+        print(f"[{META['name']}] DB投入成功: {len(result.data)}件")
+        
+    except Exception as e:
+        print(f"[{META['name']}][ERROR] DB投入失敗: {e}")
+        # JSON保存は継続（DB失敗は致命的ではない）
 
 def _requests_session() -> requests.Session:
     retry = Retry(
@@ -100,114 +197,134 @@ def _fetch_html(url: str) -> str:
         raise RuntimeError(f"cloudscraperでも取得失敗: status={r2.status_code}")
     return r2.text
 
-# ---- Parse -------------------------------------------------------------------
 def _extract_rows(soup: BeautifulSoup) -> List:
     rows = soup.select(SELECTORS["primary_rows"])
     if not rows or len(rows) <= 1:
         rows = soup.select(SELECTORS["fallback_rows"])
     return rows
 
-def fetch_raw_events() -> List[Dict[str, str]]:
-    """
-    国際センター（https://www.marinemesse.or.jp/kokusai/event/）
-    1行=1イベント（ヘッダ行は除外）
-      - 1列目: 日付/期間（+時刻が含まれる場合あり）
-      - 2列目: タイトル（<a>優先）
-    """
-    html = _fetch_html(META["url"])
-    soup = BeautifulSoup(html, "html.parser")
+def fetch_month_events(url: str, year: int, month: int) -> List[Dict[str, str]]:
+    """指定月のイベントを取得"""
+    try:
+        html = _fetch_html(url)
+        soup = BeautifulSoup(html, "html.parser")
 
-    events = []
-    rows = _extract_rows(soup)
+        events = []
+        rows = _extract_rows(soup)
 
-    for tr in rows:
-        # ヘッダ行スキップ
-        if tr.find("th"):
-            continue
-        tds = tr.find_all("td")
-        if len(tds) < 2:
-            continue
+        for tr in rows:
+            # ヘッダ行スキップ
+            if tr.find("th"):
+                continue
+            tds = tr.find_all("td")
+            if len(tds) < 2:
+                continue
 
-        # 1列目（日付・時間）改行をスペースに
-        dt_text = " ".join(tds[0].get_text(" ", strip=True).split())
+            # 1列目（日付・時間）改行をスペースに
+            dt_text = " ".join(tds[0].get_text(" ", strip=True).split())
 
-        # 2列目（タイトル）リンク優先
-        a = tds[1].find("a")
-        title = a.get_text(" ", strip=True) if a else tds[1].get_text(" ", strip=True)
+            # 2列目（タイトル）リンク優先
+            a = tds[1].find("a")
+            title = a.get_text(" ", strip=True) if a else tds[1].get_text(" ", strip=True)
 
-        # ナビ行/空行除外
-        if not title or "前月" in title or "翌月" in title:
-            continue
+            # ナビ行/空行除外
+            if not title or "前月" in title or "翌月" in title:
+                continue
 
-        events.append({"datetime": dt_text, "title": title})
+            events.append({
+                "datetime": dt_text, 
+                "title": title,
+                "source_month": f"{year}-{month:02d}"
+            })
 
-    return events
+        return events
 
-# ---- Normalize / Build -------------------------------------------------------
-def _norm_for_hash(s: str) -> str:
-    """ハッシュ用の軽量正規化：空白圧縮＋trim（NFKCや引用符統一はsplit_and_normalize側で実施想定）"""
-    return " ".join((s or "").split()).strip()
+    except Exception as e:
+        print(f"[{META['name']}] Failed to fetch {year}-{month:02d}: {e}")
+        return []
 
-def build_output(today_str: str, raw: List[Dict[str, str]]) -> List[Dict]:
-    # 共通正規化＆展開（date/time/title/venue を返す想定）
+def fetch_multi_month_events() -> List[Dict[str, str]]:
+    """当月1日～翌月末日の2ヶ月分を取得"""
+    all_events = []
+    current_month = datetime.now(JST).replace(day=1)
+    
+    # 当月+翌月の2ヶ月分
+    for i in range(2):
+        target = current_month + relativedelta(months=i)
+        url = f"{BASE_URL}?yy={target.year}&mm={target.month}"
+        
+        print(f"[{META['name']}] Fetching {target.year}-{target.month:02d} from {url}")
+        month_events = fetch_month_events(url, target.year, target.month)
+        all_events.extend(month_events)
+    
+    return all_events
+
+def main():
+    t0 = time.time()
+    target_date = _resolve_target_date()
+
+    # Ver.2.0: 常に2ヶ月分取得
+    raw = fetch_multi_month_events()
+    
+    # 期間範囲計算（当月1日～翌月末日）
+    start_date, end_date = get_target_date_range()
+    print(f"[{META['name']}] Target range: {start_date} ~ {end_date}")
+
+    # 共通正規化＆展開
     normalized = []
     for e in raw:
         normalized.extend(split_and_normalize(e["datetime"], e["title"], META["venue"]))
 
-    # 当日分だけ抽出
-    todays = [x for x in normalized if x.get("date") == today_str]
+    # 期間フィルタリング（当月1日～翌月末日）
+    all_events = filter_date_range(normalized, start_date, end_date)
 
-    # 重複排除（キー順序：date|time|title|venue）
+    # 重複排除＆メタ付与（全期間データ - Ver.2.0用）
     seen = set()
     out = []
-    extracted_at = datetime.now(JST).isoformat(timespec="seconds")
-    for it in todays:
-        date_v = _norm_for_hash(it.get("date", ""))
-        time_v = _norm_for_hash(it.get("time", ""))  # 省略可
-        title_v = _norm_for_hash(it.get("title", ""))
-        venue_v = _norm_for_hash(it.get("venue", META["venue"]))
-        key = f"{date_v}|{time_v}|{title_v}|{venue_v}"
+    extracted_at = datetime.now(JST).isoformat()
+
+    for it in all_events:
+        title_norm = _normalize_for_hash(it.get("title", ""))
+        venue_norm = _normalize_for_hash(it.get("venue", ""))
+        date_part = it.get("date", "")
+        time_part = it.get("time") or ""
+
+        key = f"{date_part}|{time_part}|{title_norm}|{venue_norm}"
         h = _sha1(key)
         if h in seen:
             continue
         seen.add(h)
+
         out.append({
             "schema_version": META["schema_version"],
-            "date": date_v,
-            **({"time": time_v} if time_v else {}),
-            "title": title_v,
-            "venue": venue_v,
-            "source": META["url"],
+            **it,
+            "source": BASE_URL,
             "hash": h,
             "extracted_at": extracted_at,
         })
 
     # 整列（date, time, title）
     def sort_key(ev):
-        t = ev.get("time") or "99:99"
-        return (ev.get("date", ""), t, ev.get("title", ""))
+        t = ev.get("time")
+        tkey = t if (t and re.fullmatch(r"\d{2}:\d{2}", t)) else "99:99"
+        return (ev.get("date", ""), tkey, ev.get("title", ""))
+    
     out.sort(key=sort_key)
-    return out
 
-# ---- Save / Main -------------------------------------------------------------
-def _save(today_str: str, items: List[Dict]) -> str:
-    path = _storage_path(today_str, META['venue_code'])
+    # JSON保存（storage/{target_date}_c.json）— Ver.2.0: 全期間データを保存
+    path = _storage_path(target_date, META['venue_code'])
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=2)
-    return str(path)
+        json.dump(out, f, ensure_ascii=False, indent=2)
 
-def main():
-    t0 = time.time()
-    today = datetime.now(JST).date()
-    today_str = today.strftime("%Y-%m-%d")
+    # Supabase投入（Ver.2.0用・新機能）
+    db_enabled = os.getenv("ENABLE_DB_SAVE", "0") == "1"
+    if db_enabled and SUPABASE_AVAILABLE:
+        save_to_supabase(out)
+    elif db_enabled:
+        print(f"[{META['name']}] DB投入スキップ: Supabase依存関係不足")
 
-    raw = fetch_raw_events()
-    out = build_output(today_str, raw)
-
-    # 成功（0件でも成功扱いで保存する＝当日の「0件」を明示化）
-    path = _save(today_str, out)
     ms = int((time.time() - t0) * 1000)
-    print(f"[{META['name']}] date={today_str} items={len(out)} ms={ms} url={META['url']} → {path}")
+    print(f"[{META['name']}] date={target_date} items={len(out)} range={start_date}~{end_date} ms={ms} → {path}")
 
 if __name__ == "__main__":
     try:
