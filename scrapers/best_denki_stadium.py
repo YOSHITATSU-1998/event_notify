@@ -1,10 +1,11 @@
-# scrapers/best_denki_stadium.py
+# scrapers/best_denki_stadium.py Ver.2.0 + DB投入機能
 import os
 import json
 import time
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict
 from pathlib import Path
 
@@ -12,6 +13,15 @@ import requests
 from bs4 import BeautifulSoup
 
 from event_notify.utils.parser import split_and_normalize, JST
+
+# Supabase投入用（オプション）
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 # ---- META / SELECTORS -------------------------------------------------------
 META = {
@@ -65,9 +75,72 @@ def resolve_target_date() -> str:
         return override
     return datetime.now(JST).strftime("%Y-%m-%d")
 
-def filter_today_only(items: List[Dict], target_date: str) -> List[Dict]:
-    """正規化後のitemsから、JST target_date のみを残す"""
-    return [e for e in items if e.get("date") == target_date]
+def get_target_date_range() -> tuple[str, str]:
+    """当月1日～翌月末日の期間を取得（Ver.2.0用）"""
+    today = datetime.now(JST)
+    
+    # 当月1日
+    start_date = today.replace(day=1)
+    
+    # 翌月末日
+    next_month_first = start_date + relativedelta(months=1)
+    end_date = next_month_first + relativedelta(months=1) - timedelta(days=1)
+    
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+
+def filter_date_range(items: List[Dict], start_date: str, end_date: str) -> List[Dict]:
+    """指定期間内のイベントのみ抽出"""
+    return [e for e in items if start_date <= e.get("date", "") <= end_date]
+
+# ---- SUPABASE FUNCTIONS -----------------------------------------------------
+def get_supabase_client() -> Client:
+    """Supabaseクライアントを取得"""
+    if not SUPABASE_AVAILABLE:
+        raise RuntimeError("Supabase依存関係が不足: pip install supabase python-dotenv")
+    
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise RuntimeError("環境変数 SUPABASE_URL, SUPABASE_KEY が設定されていません")
+    
+    return create_client(url, key)
+
+def save_to_supabase(events: List[Dict]) -> None:
+    """イベントデータをSupabaseに保存"""
+    if not events:
+        print(f"[{META['name']}] DB投入: データなし")
+        return
+    
+    try:
+        supabase = get_supabase_client()
+        
+        # JSONからSupabase形式に変換
+        db_records = []
+        for event in events:
+            record = {
+                "date": event.get("date"),
+                "time": event.get("time"),  # NULLも許可
+                "title": event.get("title", ""),
+                "venue": event.get("venue", ""),
+                "source_url": event.get("source", ""),
+                "data_hash": event.get("hash", ""),
+                "event_type": "auto",
+                "notes": event.get("notes")  # NULLも許可
+            }
+            db_records.append(record)
+        
+        # バッチ挿入（重複は無視）
+        result = supabase.table('events').upsert(
+            db_records,
+            on_conflict="data_hash"  # 重複時は無視
+        ).execute()
+        
+        print(f"[{META['name']}] DB投入成功: {len(result.data)}件")
+        
+    except Exception as e:
+        print(f"[{META['name']}][ERROR] DB投入失敗: {e}")
+        # JSON保存は継続（DB失敗は致命的ではない）
 
 # ---- SCRAPING ---------------------------------------------------------------
 def parse_avispa_table(soup: BeautifulSoup) -> List[Dict]:
@@ -170,14 +243,12 @@ def main():
     t0 = time.time()
     
     target_date = resolve_target_date()
-    include_future = os.getenv("SCRAPER_INCLUDE_FUTURE") == "1"
     
     print(f"[DEBUG] Starting best_denki_stadium scraper")
     print(f"[DEBUG] Target date: {target_date}")
-    print(f"[DEBUG] Include future: {include_future}")
     
     try:
-        # 1) 取得
+        # 1) 全期間データ取得
         raw = fetch_raw_events()
         print(f"[DEBUG] Raw events: {len(raw)}")
         for event in raw:
@@ -194,16 +265,20 @@ def main():
         for norm_event in normalized:
             print(f"[DEBUG] Normalized: {norm_event}")
         
-        # 3) 当日抽出（冗長化：dispatch側でも行うが、スクレイパー側でも実施）
-        items = normalized if include_future else filter_today_only(normalized, target_date)
-        print(f"[DEBUG] After date filtering: {len(items)} events")
+        # 期間範囲計算（当月1日～翌月末日）
+        start_date, end_date = get_target_date_range()
+        print(f"[{META['name']}] Target range: {start_date} ~ {end_date}")
+
+        # 3) 期間フィルタリング（当月1日～翌月末日）
+        all_events = filter_date_range(normalized, start_date, end_date)
+        print(f"[DEBUG] After date filtering: {len(all_events)} events")
         
-        # 4) 重複排除＆メタ付与
+        # 4) 重複排除＆メタ付与（全期間データ - Ver.2.0用）
         seen = set()
         out: List[Dict] = []
         extracted_at = datetime.now(JST).isoformat()
         
-        for it in items:
+        for it in all_events:
             title_norm = _normalize_for_hash(it.get("title", ""))
             venue_norm = _normalize_for_hash(it.get("venue", ""))
             date_part = it.get("date", "")
@@ -232,13 +307,20 @@ def main():
         
         out.sort(key=_sort_key)
         
-        # 6) JSON保存（storage/{target_date}_g.json）
+        # 6) JSON保存（storage/{target_date}_g.json）— Ver.2.0: 全期間データを保存
         path = _storage_path(target_date, "g")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, indent=2)
         
+        # 7) Supabase投入（Ver.2.0用・新機能）
+        db_enabled = os.getenv("ENABLE_DB_SAVE", "0") == "1"
+        if db_enabled and SUPABASE_AVAILABLE:
+            save_to_supabase(out)
+        elif db_enabled:
+            print(f"[{META['name']}] DB投入スキップ: Supabase依存関係不足")
+        
         ms = int((time.time() - t0) * 1000)
-        print(f"[{META['name']}] date={target_date} items={len(out)} ms={ms} url=\"{URL}\" → {path}")
+        print(f"[{META['name']}] date={target_date} items={len(out)} range={start_date}~{end_date} ms={ms} → {path}")
         
     except Exception as e:
         msg = str(e).replace("\n", " ").strip()
