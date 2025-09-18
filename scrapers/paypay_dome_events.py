@@ -4,14 +4,15 @@ import json
 import time
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
 
-from event_notify.utils.parser import JST
+# parser.pyから必要な機能をインポート
+from event_notify.utils.parser import split_and_normalize, JST
 
 # ---- META / SELECTORS -------------------------------------------------------
 META = {
@@ -19,7 +20,7 @@ META = {
     "venue": "みずほPayPayドーム",
     "url": "https://www.softbankhawks.co.jp/stadium/event_schedule/2025/",
     "schema_version": "1.0",
-    "selector_profile": "static HTML with month sections; date + event pattern",
+    "selector_profile": "structured HTML with date/event pairs; proper HTML parsing",
 }
 URL = META["url"]
 VENUE = META["venue"]
@@ -70,10 +71,10 @@ def filter_today_only(items: List[Dict], target_date: str) -> List[Dict]:
 
 def parse_paypay_date(date_str: str) -> str:
     """
-    "2025/9/5（木）" → "2025-09-05"
+    "2025/9/13（土）" → "2025-09-13"
     """
-    # 基本パターン: 2025/9/5
-    match = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})', date_str.strip())
+    # 基本パターン: 2025/9/13
+    match = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})（.+）', date_str.strip())
     if match:
         year, month, day = match.groups()
         return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
@@ -81,24 +82,39 @@ def parse_paypay_date(date_str: str) -> str:
 
 def extract_event_time(time_str: str) -> str:
     """
-    "開場 16:00 開演 18:00" → "18:00"
-    開演時刻を優先、なければ開場時刻
+    PayPayドーム固有の時刻抽出:
+    "開催時間 11:00～19:00" → "11:00"
+    "開演時間 開場 16:00 開演 18:00" → "18:00"
     """
-    # 開演時刻を優先抽出
+    if not time_str:
+        return None
+    
+    # パターン1: 開催時間 11:00～19:00（開始時刻を抽出）
+    schedule_match = re.search(r'開催時間\s*(\d{1,2}:\d{2})', time_str)
+    if schedule_match:
+        return schedule_match.group(1)
+    
+    # パターン2: 開演時間 開場 XX:XX 開演 YY:YY（開演優先）
     start_match = re.search(r'開演\s*(\d{1,2}:\d{2})', time_str)
     if start_match:
         return start_match.group(1)
     
-    # 開場時刻をフォールバック
+    # パターン3: 開場時刻のみ
     open_match = re.search(r'開場\s*(\d{1,2}:\d{2})', time_str)
     if open_match:
         return open_match.group(1)
+    
+    # パターン4: 一般的な時刻パターン（HH:MM）
+    time_match = re.search(r'(\d{1,2}:\d{2})', time_str)
+    if time_match:
+        return time_match.group(1)
     
     return None  # 時刻未定
 
 def extract_event_title(title_str: str) -> str:
     """
-    "[第39回 Golden Disc Awards](https://www.osipass.jp/)" → "第39回 Golden Disc Awards"
+    "[acosta!@みずほPayPayドーム福岡](https://acosta.jp/...)" 
+    → "acosta!@みずほPayPayドーム福岡"
     """
     # [タイトル](URL) パターンから抽出
     match = re.search(r'\[([^\]]+)\]', title_str)
@@ -115,61 +131,94 @@ def fetch_raw_events() -> List[Dict]:
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
 
+    print(f"[DEBUG] HTTP Status: {r.status_code}")
+    print(f"[DEBUG] Content length: {len(r.text)}")
+    
     events = []
-    current_date = None
     
-    # HTMLテキストを行ごとに処理
-    text_content = soup.get_text()
-    lines = [line.strip() for line in text_content.split('\n') if line.strip()]
+    # 正しいHTML構造に基づく抽出
+    # dl.temp_calendarList > dt（日付）+ dd（詳細）のペア
+    calendar_lists = soup.find_all('dl', class_='temp_calendarList')
+    print(f"[DEBUG] Found {len(calendar_lists)} calendar lists")
     
-    for i, line in enumerate(lines):
-        # 日付行を検出: "2025/9/5（木）"
-        if re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', line):
-            current_date = line
-            continue
+    for calendar in calendar_lists:
+        # dt（日付）とdd（詳細）のペアを処理
+        dt_elements = calendar.find_all('dt')
+        dd_elements = calendar.find_all('dd')
         
-        # イベント行を検出: "イベント [タイトル](URL)"
-        if line.startswith('イベント ') and current_date:
-            event_title = line.replace('イベント ', '', 1)
+        print(f"[DEBUG] Found {len(dt_elements)} dates and {len(dd_elements)} details")
+        
+        # dtとddのペアを処理
+        for dt, dd in zip(dt_elements, dd_elements):
+            date_text = dt.get_text().strip()
+            print(f"[DEBUG] Processing date: {date_text}")
             
-            # 次の行から時刻情報を取得
-            time_info = ""
-            for j in range(i + 1, min(i + 5, len(lines))):  # 次の数行を確認
-                next_line = lines[j]
-                if re.search(r'開[場演]', next_line):
-                    time_info += " " + next_line
-                elif next_line.startswith('お問い合わせ'):
-                    break
-                elif re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', next_line):
-                    break  # 次の日付が始まった
+            # 日付パターンの確認
+            if not re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', date_text):
+                print(f"[DEBUG] Date pattern not matched: {date_text}")
+                continue
             
-            events.append({
-                "date_raw": current_date,
-                "title_raw": event_title,
-                "time_raw": time_info.strip()
-            })
+            # table内からイベント情報を抽出
+            table = dd.find('table')
+            if not table:
+                print(f"[DEBUG] No table found for date: {date_text}")
+                continue
+            
+            event_title = None
+            event_time = None
+            
+            # tableの行を解析
+            rows = table.find_all('tr')
+            for row in rows:
+                th = row.find('th')
+                td = row.find('td')
+                
+                if not th or not td:
+                    continue
+                
+                th_text = th.get_text().strip()
+                td_text = td.get_text().strip()
+                
+                if th_text == 'イベント':
+                    # span要素があればその中身、なければtd全体
+                    span = td.find('span')
+                    event_title = span.get_text().strip() if span else td_text
+                    
+                elif th_text in ['開催時間', '開演時間']:
+                    event_time = td_text
+            
+            if event_title:
+                print(f"[DEBUG] Found event: {date_text} | {event_title} | {event_time}")
+                events.append({
+                    "date_raw": date_text,
+                    "title_raw": event_title,
+                    "time_raw": event_time or ""
+                })
+            else:
+                print(f"[DEBUG] No event title found for date: {date_text}")
     
+    print(f"[DEBUG] Total events extracted: {len(events)}")
     return events
 
 def normalize_events(raw_events: List[Dict]) -> List[Dict]:
-    """生データを正規化してevent_notify形式に変換"""
+    """生データを正規化してevent_notify形式に変換（PayPayドーム専用処理）"""
     normalized = []
     
     for raw in raw_events:
-        # 日付正規化
+        # 日付正規化: "2025/9/13（土）" → "2025-09-13"
         date = parse_paypay_date(raw["date_raw"])
         if not date:
             continue
         
-        # 時刻抽出
-        time = extract_event_time(raw["time_raw"])
+        # 時刻抽出: "開催時間 11:00～19:00" → "11:00"
+        time_extracted = extract_event_time(raw["time_raw"])
         
         # タイトル抽出
         title = extract_event_title(raw["title_raw"])
         
         normalized.append({
             "date": date,
-            "time": time,
+            "time": time_extracted,
             "title": title,
             "venue": VENUE,
             "event_type": "event"  # 野球と区別
@@ -183,15 +232,21 @@ def main():
 
     target_date = resolve_target_date()
     include_future = os.getenv("SCRAPER_INCLUDE_FUTURE") == "1"
+    
+    print(f"[{META['name']}] target_date={target_date}")
+    print(f"[{META['name']}] include_future={include_future}")
 
     # 1) 取得
     raw = fetch_raw_events()
+    print(f"[{META['name']}] scraped {len(raw)} total events")
 
     # 2) 正規化
     normalized = normalize_events(raw)
+    print(f"[{META['name']}] normalized to {len(normalized)} events")
 
     # 3) 当日抽出
     items = normalized if include_future else filter_today_only(normalized, target_date)
+    print(f"[{META['name']}] filtered to {len(items)} events for {target_date}")
 
     # 4) 重複排除＆メタ付与
     seen = set()
