@@ -1,10 +1,11 @@
-# scrapers/paypay_dome_events.py
+# scrapers/paypay_dome_events.py Ver.2.0 + 年跨ぎ対応 + DB投入機能
 import os
 import json
 import time
 import re
 import unicodedata
 from datetime import datetime, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List, Dict
 from pathlib import Path
 
@@ -14,15 +15,23 @@ from bs4 import BeautifulSoup
 # parser.pyから必要な機能をインポート
 from event_notify.utils.parser import split_and_normalize, JST
 
+# Supabase投入用（オプション）
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+
 # ---- META / SELECTORS -------------------------------------------------------
 META = {
     "name": "paypay_dome_events",
     "venue": "みずほPayPayドーム",
-    "url": "https://www.softbankhawks.co.jp/stadium/event_schedule/2025/",
+    "url_template": "https://www.softbankhawks.co.jp/stadium/event_schedule/{year}/",
     "schema_version": "1.0",
-    "selector_profile": "structured HTML with date/event pairs; proper HTML parsing",
+    "selector_profile": "structured HTML with date/event pairs; multi-year URL support",
 }
-URL = META["url"]
 VENUE = META["venue"]
 SCHEMA_VERSION = META["schema_version"]
 
@@ -65,9 +74,72 @@ def resolve_target_date() -> str:
         return override
     return datetime.now(JST).strftime("%Y-%m-%d")
 
-def filter_today_only(items: List[Dict], target_date: str) -> List[Dict]:
-    """正規化後のitemsから、JST target_date のみを残す"""
-    return [e for e in items if e.get("date") == target_date]
+def get_target_date_range() -> tuple[str, str]:
+    """当月1日～翌月末日の期間を取得（Ver.2.0用）"""
+    today = datetime.now(JST)
+    
+    # 当月1日
+    start_date = today.replace(day=1)
+    
+    # 翌月末日
+    next_month_first = start_date + relativedelta(months=1)
+    end_date = next_month_first + relativedelta(months=1) - timedelta(days=1)
+    
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+
+def filter_date_range(items: List[Dict], start_date: str, end_date: str) -> List[Dict]:
+    """指定期間内のイベントのみ抽出"""
+    return [e for e in items if start_date <= e.get("date", "") <= end_date]
+
+# ---- SUPABASE FUNCTIONS -----------------------------------------------------
+def get_supabase_client() -> Client:
+    """Supabaseクライアントを取得"""
+    if not SUPABASE_AVAILABLE:
+        raise RuntimeError("Supabase依存関係が不足: pip install supabase python-dotenv")
+    
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise RuntimeError("環境変数 SUPABASE_URL, SUPABASE_KEY が設定されていません")
+    
+    return create_client(url, key)
+
+def save_to_supabase(events: List[Dict]) -> None:
+    """イベントデータをSupabaseに保存"""
+    if not events:
+        print(f"[{META['name']}] DB投入: データなし")
+        return
+    
+    try:
+        supabase = get_supabase_client()
+        
+        # JSONからSupabase形式に変換
+        db_records = []
+        for event in events:
+            record = {
+                "date": event.get("date"),
+                "time": event.get("time"),  # NULLも許可
+                "title": event.get("title", ""),
+                "venue": event.get("venue", ""),
+                "source_url": event.get("source", ""),
+                "data_hash": event.get("hash", ""),
+                "event_type": "auto",
+                "notes": event.get("notes")  # NULLも許可
+            }
+            db_records.append(record)
+        
+        # バッチ挿入（重複は無視）
+        result = supabase.table('events').upsert(
+            db_records,
+            on_conflict="data_hash"  # 重複時は無視
+        ).execute()
+        
+        print(f"[{META['name']}] DB投入成功: {len(result.data)}件")
+        
+    except Exception as e:
+        print(f"[{META['name']}][ERROR] DB投入失敗: {e}")
+        # JSON保存は継続（DB失敗は致命的ではない）
 
 def parse_paypay_date(date_str: str) -> str:
     """
@@ -125,80 +197,110 @@ def extract_event_title(title_str: str) -> str:
     return title_str.strip()
 
 # ---- SCRAPING ---------------------------------------------------------------
-def fetch_raw_events() -> List[Dict]:
-    """PayPayドーム公式サイトからイベント情報を取得"""
-    r = requests.get(URL, headers=HEADERS, timeout=15)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
+def fetch_year_events(url: str, year: int) -> List[Dict]:
+    """指定年のPayPayドームイベント情報を取得"""
+    try:
+        print(f"[{META['name']}] Fetching {year} from {url}")
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
 
-    print(f"[DEBUG] HTTP Status: {r.status_code}")
-    print(f"[DEBUG] Content length: {len(r.text)}")
-    
-    events = []
-    
-    # 正しいHTML構造に基づく抽出
-    # dl.temp_calendarList > dt（日付）+ dd（詳細）のペア
-    calendar_lists = soup.find_all('dl', class_='temp_calendarList')
-    print(f"[DEBUG] Found {len(calendar_lists)} calendar lists")
-    
-    for calendar in calendar_lists:
-        # dt（日付）とdd（詳細）のペアを処理
-        dt_elements = calendar.find_all('dt')
-        dd_elements = calendar.find_all('dd')
+        print(f"[DEBUG] HTTP Status: {r.status_code}")
+        print(f"[DEBUG] Content length: {len(r.text)}")
         
-        print(f"[DEBUG] Found {len(dt_elements)} dates and {len(dd_elements)} details")
+        events = []
         
-        # dtとddのペアを処理
-        for dt, dd in zip(dt_elements, dd_elements):
-            date_text = dt.get_text().strip()
-            print(f"[DEBUG] Processing date: {date_text}")
+        # 正しいHTML構造に基づく抽出
+        # dl.temp_calendarList > dt（日付）+ dd（詳細）のペア
+        calendar_lists = soup.find_all('dl', class_='temp_calendarList')
+        print(f"[DEBUG] Found {len(calendar_lists)} calendar lists for {year}")
+        
+        for calendar in calendar_lists:
+            # dt（日付）とdd（詳細）のペアを処理
+            dt_elements = calendar.find_all('dt')
+            dd_elements = calendar.find_all('dd')
             
-            # 日付パターンの確認
-            if not re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', date_text):
-                print(f"[DEBUG] Date pattern not matched: {date_text}")
-                continue
+            print(f"[DEBUG] Found {len(dt_elements)} dates and {len(dd_elements)} details")
             
-            # table内からイベント情報を抽出
-            table = dd.find('table')
-            if not table:
-                print(f"[DEBUG] No table found for date: {date_text}")
-                continue
-            
-            event_title = None
-            event_time = None
-            
-            # tableの行を解析
-            rows = table.find_all('tr')
-            for row in rows:
-                th = row.find('th')
-                td = row.find('td')
+            # dtとddのペアを処理
+            for dt, dd in zip(dt_elements, dd_elements):
+                date_text = dt.get_text().strip()
+                print(f"[DEBUG] Processing date: {date_text}")
                 
-                if not th or not td:
+                # 日付パターンの確認
+                if not re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', date_text):
+                    print(f"[DEBUG] Date pattern not matched: {date_text}")
                     continue
                 
-                th_text = th.get_text().strip()
-                td_text = td.get_text().strip()
+                # table内からイベント情報を抽出
+                table = dd.find('table')
+                if not table:
+                    print(f"[DEBUG] No table found for date: {date_text}")
+                    continue
                 
-                if th_text == 'イベント':
-                    # span要素があればその中身、なければtd全体
-                    span = td.find('span')
-                    event_title = span.get_text().strip() if span else td_text
+                event_title = None
+                event_time = None
+                
+                # tableの行を解析
+                rows = table.find_all('tr')
+                for row in rows:
+                    th = row.find('th')
+                    td = row.find('td')
                     
-                elif th_text in ['開催時間', '開演時間']:
-                    event_time = td_text
-            
-            if event_title:
-                print(f"[DEBUG] Found event: {date_text} | {event_title} | {event_time}")
-                events.append({
-                    "date_raw": date_text,
-                    "title_raw": event_title,
-                    "time_raw": event_time or ""
-                })
-            else:
-                print(f"[DEBUG] No event title found for date: {date_text}")
+                    if not th or not td:
+                        continue
+                    
+                    th_text = th.get_text().strip()
+                    td_text = td.get_text().strip()
+                    
+                    if th_text == 'イベント':
+                        # span要素があればその中身、なければtd全体
+                        span = td.find('span')
+                        event_title = span.get_text().strip() if span else td_text
+                        
+                    elif th_text in ['開催時間', '開演時間']:
+                        event_time = td_text
+                
+                if event_title:
+                    print(f"[DEBUG] Found event: {date_text} | {event_title} | {event_time}")
+                    events.append({
+                        "date_raw": date_text,
+                        "title_raw": event_title,
+                        "time_raw": event_time or "",
+                        "source_year": year
+                    })
+                else:
+                    print(f"[DEBUG] No event title found for date: {date_text}")
+        
+        print(f"[DEBUG] Total events extracted from {year}: {len(events)}")
+        return events
+        
+    except requests.RequestException as e:
+        print(f"[{META['name']}] Failed to fetch {year}: HTTP error: {e}")
+        return []
+    except Exception as e:
+        print(f"[{META['name']}] Failed to fetch {year}: {e}")
+        return []
+
+def fetch_multi_year_events() -> List[Dict]:
+    """年跨ぎ対応: 必要に応じて複数年のイベント情報を取得"""
+    start_date, end_date = get_target_date_range()
     
-    print(f"[DEBUG] Total events extracted: {len(events)}")
-    return events
+    # 開始年と終了年を判定
+    start_year = int(start_date[:4])
+    end_year = int(end_date[:4])
+    
+    print(f"[{META['name']}] Target range: {start_date} ~ {end_date} (years: {start_year}~{end_year})")
+    
+    all_events = []
+    
+    # 必要な年のURLを取得
+    for year in range(start_year, end_year + 1):
+        url = META["url_template"].format(year=year)
+        year_events = fetch_year_events(url, year)
+        all_events.extend(year_events)
+    
+    return all_events
 
 def normalize_events(raw_events: List[Dict]) -> List[Dict]:
     """生データを正規化してevent_notify形式に変換（PayPayドーム専用処理）"""
@@ -231,24 +333,26 @@ def main():
     t0 = time.time()
 
     target_date = resolve_target_date()
-    include_future = os.getenv("SCRAPER_INCLUDE_FUTURE") == "1"
     
     print(f"[{META['name']}] target_date={target_date}")
-    print(f"[{META['name']}] include_future={include_future}")
 
-    # 1) 取得
-    raw = fetch_raw_events()
+    # 1) 全期間データ取得（年跨ぎ対応）
+    raw = fetch_multi_year_events()
     print(f"[{META['name']}] scraped {len(raw)} total events")
 
     # 2) 正規化
     normalized = normalize_events(raw)
     print(f"[{META['name']}] normalized to {len(normalized)} events")
 
-    # 3) 当日抽出
-    items = normalized if include_future else filter_today_only(normalized, target_date)
-    print(f"[{META['name']}] filtered to {len(items)} events for {target_date}")
+    # 期間範囲計算（当月1日～翌月末日）
+    start_date, end_date = get_target_date_range()
+    print(f"[{META['name']}] Target range: {start_date} ~ {end_date}")
 
-    # 4) 重複排除＆メタ付与
+    # 3) 期間フィルタリング（当月1日～翌月末日）
+    items = filter_date_range(normalized, start_date, end_date)
+    print(f"[{META['name']}] filtered to {len(items)} events for {start_date} ~ {end_date}")
+
+    # 4) 重複排除＆メタ付与（全期間データ - Ver.2.0用）
     seen = set()
     out: List[Dict] = []
     extracted_at = datetime.now(JST).isoformat()
@@ -265,10 +369,14 @@ def main():
             continue
         seen.add(h)
 
+        # 年跨ぎ対応でsource URLを動的生成
+        event_year = int(date_part[:4])
+        source_url = META["url_template"].format(year=event_year)
+
         out.append({
             "schema_version": SCHEMA_VERSION,
             **it,
-            "source": URL,
+            "source": source_url,
             "hash": h,
             "extracted_at": extracted_at,
         })
@@ -281,18 +389,25 @@ def main():
 
     out.sort(key=_sort_key)
 
-    # 6) JSON保存（storage/{target_date}_f_event.json）
+    # 6) JSON保存（storage/{target_date}_f_event.json）— Ver.2.0: 全期間データを保存
     path = _storage_path(target_date, "f_event")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
+    # 7) Supabase投入（Ver.2.0用・新機能）
+    db_enabled = os.getenv("ENABLE_DB_SAVE", "0") == "1"
+    if db_enabled and SUPABASE_AVAILABLE:
+        save_to_supabase(out)
+    elif db_enabled:
+        print(f"[{META['name']}] DB投入スキップ: Supabase依存関係不足")
+
     ms = int((time.time() - t0) * 1000)
-    print(f"[{META['name']}] date={target_date} items={len(out)} ms={ms} url=\"{URL}\" → {path}")
+    print(f"[{META['name']}] date={target_date} items={len(out)} range={start_date}~{end_date} ms={ms} → {path}")
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
         msg = str(e).replace("\n", " ").strip()
-        print(f"[{META['name']}][ERROR] msg=\"{msg}\" url=\"{URL}\"")
+        print(f"[{META['name']}][ERROR] msg=\"{msg}\"")
         time.sleep(1)
