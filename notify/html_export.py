@@ -1,4 +1,4 @@
-# notify/html_export.py Ver.1.8対応版（manual.html生成追加）
+# notify/html_export.py Ver.2.2対応版（カレンダーリンク追加）
 import os
 import sys
 import json
@@ -158,7 +158,7 @@ def generate_venue_list() -> str:
     return "\n".join(lines)
 
 def create_html_content(today: str, event_message: str, venue_list: str) -> str:
-    """index.html全体を生成（意見箱セクション + 手動追加リンク）"""
+    """index.html全体を生成（カレンダーリンク + 意見箱セクション + 手動追加リンク）"""
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     
     html = f"""<!DOCTYPE html>
@@ -226,15 +226,15 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             color: #3498db;
             text-decoration: underline;
         }}
-        .manual-section {{
-            background: #e8f5e8;
+        .calendar-section {{
+            background: #f0f8f0;
             padding: 20px;
             border-radius: 5px;
             border-left: 4px solid #27ae60;
             text-align: center;
             margin-bottom: 30px;
         }}
-        .manual-link {{
+        .calendar-link {{
             display: inline-block;
             background: #27ae60;
             color: white;
@@ -246,7 +246,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             transition: background-color 0.3s ease;
             margin-top: 10px;
         }}
-        .manual-link:hover {{
+        .calendar-link:hover {{
             background: #219a52;
             text-decoration: none;
         }}
@@ -292,7 +292,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             pre {{
                 font-size: 13px;
             }}
-            .manual-link, .opinion-link {{
+            .calendar-link, .opinion-link {{
                 font-size: 14px;
                 padding: 10px 20px;
             }}
@@ -312,6 +312,15 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             <pre>{venue_list}</pre>
         </div>
         
+        <div class="calendar-section">
+            <h3>📅 月間カレンダー表示</h3>
+            <p>イベント情報を月間カレンダー形式で確認できます</p>
+            <a href="https://fukuoka-events-calendar.vercel.app/" target="_blank" class="calendar-link">今月のカレンダーはこちら（β版）</a>
+            <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
+                ※ 日付をクリックして詳細表示
+            </p>
+        </div>
+        
         <div class="opinion-section">
             <h3>ご意見・ご要望</h3>
             <p>会場追加のご希望や情報漏れのご報告をお待ちしています</p>
@@ -323,7 +332,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.1.8 - 8会場対応（手動イベント追加機能付き）</p>
+            <p>Ver.2.2 - 8会場対応 + カレンダーサイト連携</p>
             <p><a href="manual.html" style="color: #95a5a6; text-decoration: none; font-size: 0.8em;">管理者ページへ</a></p>
         </div>
     </div>
@@ -764,7 +773,7 @@ def export_manual_html():
 def export_html():
     """HTMLファイルを生成してsite/index.htmlに保存（完全単独版）"""
     try:
-        print("[html_export] Starting Ver.1.8 HTML generation (manual support)...")
+        print("[html_export] Starting Ver.2.2 HTML generation (calendar link support)...")
         
         # 今日の日付を取得
         today = determine_today_standalone()
@@ -774,7 +783,7 @@ def export_html():
         events, missing = load_events_standalone(today)
         print(f"[html_export] Loaded {len(events)} events, missing: {missing}")
         
-        # メッセージ生成（Ver.1.8: 手動イベント対応）
+        # メッセージ生成（Ver.1.6: 2行表示対応）
         event_message = build_message_standalone(today, events, missing)
         print(f"[html_export] Generated mobile-friendly message: {len(event_message)} characters")
         
@@ -797,6 +806,7 @@ def export_html():
         print(f"[html_export] File size: {len(html_content)} bytes")
         print(f"[html_export] Events included: {len(events)}")
         print(f"[html_export] Missing venues: {missing}")
+        print(f"[html_export] Calendar link: Added Vercel site link")
         
         # Ver.1.8: manual.html も生成
         export_manual_html()
