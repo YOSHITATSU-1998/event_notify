@@ -1,4 +1,4 @@
-# notify/html_export.py Ver.2.2対応版（カレンダーリンク追加）
+# notify/html_export.py Ver.2.5対応版（データベース直結 + フォールバック）
 import os
 import sys
 import json
@@ -8,6 +8,15 @@ from typing import List, Tuple, Dict, Any
 
 # パス解決
 sys.path.append(str(Path(__file__).parent.parent))
+
+# Supabase投入用（オプション）
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    load_dotenv()
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 # JST定義
 JST = timezone(timedelta(hours=9))
@@ -52,13 +61,101 @@ def get_storage_dir() -> Path:
         storage_dir.mkdir(exist_ok=True)
         return storage_dir
 
+def get_supabase_client() -> Client:
+    """Supabaseクライアントを取得"""
+    if not SUPABASE_AVAILABLE:
+        raise RuntimeError("Supabase dependencies not available")
+    
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL or SUPABASE_KEY not set in environment")
+    
+    return create_client(url, key)
+
+def load_events_from_database(today: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Ver.2.5: Supabaseから当日のイベントを取得（時刻表示正規化対応）"""
+    try:
+        print(f"[html_export] Attempting database connection...")
+        supabase = get_supabase_client()
+        
+        # 当日のイベントを取得
+        result = supabase.table('events').select('*').eq('date', today).execute()
+        
+        if not result.data:
+            print(f"[html_export] No events found in database for {today}")
+            return [], []
+        
+        # Supabaseデータを標準形式に変換
+        events = []
+        for db_record in result.data:
+            # 時刻データの正規化処理
+            time_value = db_record.get("time")
+            if time_value:
+                # PostgreSQLのTIME型から文字列への変換対応
+                time_str = str(time_value)
+                # HH:MM:SS → HH:MM に変換（秒を削除）
+                if len(time_str) >= 5:
+                    time_value = time_str[:5]  # "18:00:00" → "18:00"
+            else:
+                time_value = None  # None維持（後で（時刻未定）に変換）
+            
+            event = {
+                "date": db_record.get("date"),
+                "time": time_value,  # 正規化済み時刻
+                "title": db_record.get("title", ""),
+                "venue": db_record.get("venue", ""),
+                "source": db_record.get("source_url", ""),
+                "hash": db_record.get("data_hash", ""),
+                "event_type": db_record.get("event_type", "auto"),
+                "notes": db_record.get("notes", "")
+            }
+            
+            # PayPayドーム用の追加情報をnotesから抽出
+            notes = event.get("notes", "")
+            if "game_status:" in notes:
+                try:
+                    # "game_status: 試合前, score: None" のような形式から抽出
+                    import re
+                    game_status_match = re.search(r'game_status:\s*([^,]+)', notes)
+                    score_match = re.search(r'score:\s*([^,\n]+)', notes)
+                    
+                    if game_status_match:
+                        event["game_status"] = game_status_match.group(1).strip()
+                    if score_match:
+                        score_value = score_match.group(1).strip()
+                        event["score"] = None if score_value in ["None", "null"] else score_value
+                except Exception as e:
+                    print(f"[html_export] Error parsing notes: {e}")
+            
+            events.append(event)
+        
+        # 時刻順ソート
+        def sort_key(event):
+            time_str = event.get("time", "99:99")
+            if not time_str or time_str == "（時刻未定）":
+                return ("99:99", event.get("title", ""), event.get("venue", ""))
+            return (time_str, event.get("title", ""), event.get("venue", ""))
+        
+        events.sort(key=sort_key)
+        
+        print(f"[html_export] Successfully loaded {len(events)} events from database")
+        
+        # Ver.2.5: missingは空（DB直結のため会場別の失敗概念なし）
+        return events, []
+        
+    except Exception as e:
+        print(f"[html_export] Database connection failed: {e}")
+        raise
+
 def load_events_standalone(today: str) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """イベントデータを読み込み（完全単独版）"""
+    """イベントデータを読み込み（従来のJSONファイル版・フォールバック用）"""
     storage_dir = get_storage_dir()
     events = []
     missing = []
     
-    print(f"[html_export] Loading events from: {storage_dir}")
+    print(f"[html_export] Loading events from storage: {storage_dir}")
     
     for code, venue_name in VENUES:
         json_path = storage_dir / f"{today}_{code}.json"
@@ -111,7 +208,8 @@ def build_message_standalone(today: str, events: List[Dict[str, Any]], missing: 
     else:
         lines.append("")  # タイトルとイベント一覧の区切り
         for i, ev in enumerate(events):
-            time_str = ev.get("time", "（時刻未定）")
+            time_value = ev.get("time")
+            time_str = time_value if time_value else "（時刻未定）"
             title = ev.get("title", "")
             venue = ev.get("venue", "")
             
@@ -157,8 +255,8 @@ def generate_venue_list() -> str:
     
     return "\n".join(lines)
 
-def create_html_content(today: str, event_message: str, venue_list: str) -> str:
-    """index.html全体を生成（カレンダーリンク + 意見箱セクション + 手動追加リンク）"""
+def create_html_content(today: str, event_message: str, venue_list: str, data_source: str) -> str:
+    """index.html全体を生成（カレンダーリンク + 意見箱セクション + データソース表示）"""
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     
     html = f"""<!DOCTYPE html>
@@ -194,6 +292,16 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
             color: #7f8c8d;
             font-size: 0.9em;
             margin-bottom: 30px;
+        }}
+        .data-source {{
+            text-align: center;
+            color: #27ae60;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 8px;
+            background: #f0f8f0;
+            border-radius: 4px;
         }}
         .content {{
             background: #f8f9fa;
@@ -303,6 +411,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
     <div class="container">
         <h1>福岡イベント情報</h1>
         <div class="update-time">最終更新: {current_time}</div>
+        <div class="data-source">データソース: {data_source}</div>
         
         <div class="content">
             <pre>{event_message}</pre>
@@ -332,7 +441,7 @@ def create_html_content(today: str, event_message: str, venue_list: str) -> str:
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.2.2 - 8会場対応 + カレンダーサイト連携</p>
+            <p>Ver.2.5 - 8会場対応 + データベース直結システム</p>
             <p><a href="manual.html" style="color: #95a5a6; text-decoration: none; font-size: 0.8em;">管理者ページへ</a></p>
         </div>
     </div>
@@ -771,28 +880,48 @@ def export_manual_html():
         raise
 
 def export_html():
-    """HTMLファイルを生成してsite/index.htmlに保存（完全単独版）"""
+    """Ver.2.5: データベース優先・フォールバック対応版HTMLファイル生成"""
     try:
-        print("[html_export] Starting Ver.2.2 HTML generation (calendar link support)...")
+        print("[html_export] Starting Ver.2.5 HTML generation (database-first with fallback)...")
         
         # 今日の日付を取得
         today = determine_today_standalone()
         print(f"[html_export] Target date: {today}")
         
-        # イベントデータを読み込み（完全単独版）
-        events, missing = load_events_standalone(today)
-        print(f"[html_export] Loaded {len(events)} events, missing: {missing}")
+        # データソース・イベント取得（優先度制御）
+        data_source = "データベース（GitHub Pages生成時点）"
+        events = []
+        missing = []
+        
+        try:
+            # 1. データベース接続を試行（最優先）
+            events, missing = load_events_from_database(today)
+            print(f"[html_export] Database success: {len(events)} events loaded")
+            
+        except Exception as db_error:
+            print(f"[html_export] Database failed, falling back to storage: {db_error}")
+            data_source = "ストレージファイル（フォールバック）"
+            
+            try:
+                # 2. フォールバック：JSONファイル読み込み
+                events, missing = load_events_standalone(today)
+                print(f"[html_export] Storage fallback success: {len(events)} events loaded")
+                
+            except Exception as storage_error:
+                print(f"[html_export] Storage fallback also failed: {storage_error}")
+                data_source = "データ取得失敗"
+                events, missing = [], []
         
         # メッセージ生成（Ver.1.6: 2行表示対応）
         event_message = build_message_standalone(today, events, missing)
-        print(f"[html_export] Generated mobile-friendly message: {len(event_message)} characters")
+        print(f"[html_export] Generated message: {len(event_message)} characters")
         
         # 会場一覧を生成（リンク化・統合処理）
         venue_list = generate_venue_list()
         print(f"[html_export] Generated venue list with links")
         
-        # index.html全体を構築
-        html_content = create_html_content(today, event_message, venue_list)
+        # index.html全体を構築（データソース表示追加）
+        html_content = create_html_content(today, event_message, venue_list, data_source)
         
         # site/index.html に保存
         site_dir = Path(__file__).parent.parent / "site"
@@ -806,13 +935,13 @@ def export_html():
         print(f"[html_export] File size: {len(html_content)} bytes")
         print(f"[html_export] Events included: {len(events)}")
         print(f"[html_export] Missing venues: {missing}")
-        print(f"[html_export] Calendar link: Added Vercel site link")
+        print(f"[html_export] Data source: {data_source}")
         
         # Ver.1.8: manual.html も生成
         export_manual_html()
         
     except Exception as e:
-        print(f"[html_export][ERROR] Failed to generate HTML: {e}")
+        print(f"[html_export][ERROR] Critical failure in HTML generation: {e}")
         import traceback
         traceback.print_exc()
         raise
