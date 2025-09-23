@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.2.0 - DB Integration
+name: Daily Scraper & Dispatch Ver.2.6 - ローカル時間統一
 on:
   workflow_dispatch:
     inputs:
@@ -27,9 +27,10 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
       MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}
-      ENABLE_DB_SAVE: "1"                    # Ver.2.0: DB投入有効化
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}      # Ver.2.0: DB接続情報
-      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}      # Ver.2.0: DB接続情報
+      ENABLE_DB_SAVE: "1"
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      GITHUB_PAGES: "true"
     
     steps:
       - uses: actions/checkout@v4
@@ -52,11 +53,6 @@ jobs:
           pip install python-dotenv>=0.19.0
           pip install python-dateutil>=2.8.0
       
-      - name: Install Playwright (PayPay events support)
-        run: |
-          pip install playwright>=1.40.0
-          playwright install chromium
-      
       - name: Ensure __init__.py files
         run: |
           touch event_notify/__init__.py
@@ -67,17 +63,17 @@ jobs:
       - name: Debug environment
         run: |
           echo "Working directory: $(pwd)"
-          echo "Ver.2.0 Environment Variables:"
+          echo "Ver.2.6 Environment Variables:"
           echo "ENABLE_DB_SAVE: $ENABLE_DB_SAVE"
           echo "SUPABASE_URL: ${SUPABASE_URL:0:20}..." # 最初20文字のみ表示
           echo "Directory structure:"
           ls -la event_notify/
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.2.0 - 8 venue system with 2-month data + DB integration)
+      - name: Run scrapers (Ver.2.6 - 8 venue system with DB integration)
         run: |
           set -e
-          echo "🌙 Ver.2.0 スクレイピング開始（2ヶ月分データ + DB投入） - $(date)"
+          echo "🌙 Ver.2.6 スクレイピング開始（ローカル時間統一） - $(date)"
           python -m event_notify.scrapers.marinemesse_a
           python -m event_notify.scrapers.marinemesse_b  
           python -m event_notify.scrapers.kokusai_center
@@ -86,7 +82,7 @@ jobs:
           python -m event_notify.scrapers.paypay_dome
           python -m event_notify.scrapers.paypay_dome_events
           python -m event_notify.scrapers.best_denki_stadium
-          echo "✅ Ver.2.0 スクレイピング完了（8会場、2ヶ月分データ、DB投入済み）"
+          echo "✅ Ver.2.6 スクレイピング完了（8会場、ローカル時間統一）"
       
       - name: Generate HTML for web (index.html + manual.html)
         run: |
@@ -134,10 +130,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra
       
-      - name: Install Node.js dependencies
+      - name: Create package.json if not exists
+        run: |
+          cd event_notify
+          if [ ! -f package.json ]; then
+            echo '{"name": "event_notify_screenshots", "version": "1.0.0", "dependencies": {"playwright": "^1.40.0"}}' > package.json
+          fi
+      
+      - name: Install Node.js dependencies and Playwright
         run: |
           cd event_notify
           npm install
+          npx playwright install chromium
       
       - name: Take screenshot for audit log
         run: |
@@ -182,12 +186,12 @@ jobs:
         env:
           GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
-      - name: Ver.2.0 completion log
+      - name: Ver.2.6 completion log
         run: |
-          echo "🎉 Ver.2.0 実行完了 - $(date)"
+          echo "🎉 Ver.2.6 実行完了 - $(date)"
           echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
-          echo "📊 対応会場: 8会場（2ヶ月分データ蓄積）"
+          echo "📊 対応会場: 8会場（ローカル時間統一）"
           echo "🗄️ データベース: Supabase投入完了"
           echo "📝 手動イベント: manual_events/対応"
           echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
-          echo "⏰ 統一スケジュール: 0:30 JST (Pages + Slack)"
+          echo "⏰ 統一スケジュール: 0:30 JST (ローカル時間基準)"
