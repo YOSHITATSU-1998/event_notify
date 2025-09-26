@@ -94,6 +94,11 @@ jobs:
           cp -r site/* ../site/
           ls -la ../site/
           echo "✅ HTML生成完了"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ENABLE_DB_SAVE: "1"
+          TZ: Asia/Tokyo
       
       - name: Replace password in manual.html
         run: |
