@@ -173,7 +173,7 @@ def parse_avispa_table(soup: BeautifulSoup) -> List[Dict]:
             print(f"[DEBUG] Row {i+1}: {section} | {date_time} | vs {opponent} | {stadium_text}")
             
             # ベスト電器スタジアム（ベススタ）でのホームゲームのみ抽出
-            if 'ベススタ' in stadium_text and 'home' in stadium_cell.get_text():
+            if ('ベススタ' in stadium_text or 'べススタ' in stadium_text) and 'home' in stadium_cell.get_text():
                 print(f"[DEBUG] Found home game at ベススタ: {date_time} vs {opponent}")
                 
                 # 日時を分解
