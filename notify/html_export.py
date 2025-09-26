@@ -62,26 +62,56 @@ def get_storage_dir() -> Path:
         return storage_dir
 
 def get_supabase_client() -> Client:
-    """Supabaseクライアントを取得"""
+    """Supabaseクライアントを取得（デバッグ強化版）"""
+    print(f"[html_export] DEBUG - SUPABASE_AVAILABLE: {SUPABASE_AVAILABLE}")
+    
     if not SUPABASE_AVAILABLE:
         raise RuntimeError("Supabase dependencies not available")
     
+    # 環境変数デバッグ出力
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
     
+    print(f"[html_export] DEBUG - SUPABASE_URL: {url[:30] if url else 'None'}...")
+    print(f"[html_export] DEBUG - SUPABASE_KEY: {key[:20] if key else 'None'}...")
+    print(f"[html_export] DEBUG - URL type: {type(url)}")
+    print(f"[html_export] DEBUG - KEY type: {type(key)}")
+    
     if not url or not key:
-        raise RuntimeError("SUPABASE_URL or SUPABASE_KEY not set in environment")
+        error_msg = f"Environment variables missing - URL: {bool(url)}, KEY: {bool(key)}"
+        print(f"[html_export] DEBUG - {error_msg}")
+        raise RuntimeError(f"SUPABASE_URL or SUPABASE_KEY not set in environment. {error_msg}")
     
     return create_client(url, key)
+
+def main():
+    """メイン実行関数（デバッグ版）"""
+    # 最初に環境変数を表示
+    print(f"[html_export] DEBUG - Environment check:")
+    print(f"[html_export] DEBUG - SUPABASE_URL present: {bool(os.getenv('SUPABASE_URL'))}")
+    print(f"[html_export] DEBUG - SUPABASE_KEY present: {bool(os.getenv('SUPABASE_KEY'))}")
+    print(f"[html_export] DEBUG - ENABLE_DB_SAVE: {os.getenv('ENABLE_DB_SAVE', 'NOT_SET')}")
+    
+    export_html()
 
 def load_events_from_database(today: str) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Ver.2.5: Supabaseから当日のイベントを取得（時刻表示正規化対応）"""
     try:
         print(f"[html_export] Attempting database connection...")
         supabase = get_supabase_client()
+        print(f"[html_export] Supabase client created successfully")
         
         # 当日のイベントを取得
+        print(f"[html_export] Querying events for date: {today}")
         result = supabase.table('events').select('*').eq('date', today).execute()
+        
+        print(f"[html_export] DEBUG - Query result type: {type(result)}")
+        print(f"[html_export] DEBUG - Result.data type: {type(result.data) if hasattr(result, 'data') else 'No data attribute'}")
+        print(f"[html_export] DEBUG - Result.data length: {len(result.data) if hasattr(result, 'data') and result.data is not None else 'No data or None'}")
+        
+        if not hasattr(result, 'data') or result.data is None:
+            print(f"[html_export] No data attribute or data is None")
+            return [], []
         
         if not result.data:
             print(f"[html_export] No events found in database for {today}")
@@ -89,12 +119,22 @@ def load_events_from_database(today: str) -> Tuple[List[Dict[str, Any]], List[st
         
         # Supabaseデータを標準形式に変換
         events = []
-        for db_record in result.data:
+        print(f"[html_export] DEBUG - Starting data conversion for {len(result.data)} records")
+        
+        for i, db_record in enumerate(result.data):
+            print(f"[html_export] DEBUG - Processing record {i+1}: {type(db_record)}")
+            
+            # デバッグ: レコード内容確認
+            print(f"[html_export] DEBUG - Record keys: {list(db_record.keys()) if db_record else 'None record'}")
+            
             # 時刻データの正規化処理
             time_value = db_record.get("time")
+            print(f"[html_export] DEBUG - time_value: {time_value} (type: {type(time_value)})")
+            
             if time_value:
                 # PostgreSQLのTIME型から文字列への変換対応
                 time_str = str(time_value)
+                print(f"[html_export] DEBUG - time_str: {time_str}")
                 # HH:MM:SS → HH:MM に変換（秒を削除）
                 if len(time_str) >= 5:
                     time_value = time_str[:5]  # "18:00:00" → "18:00"
@@ -114,7 +154,10 @@ def load_events_from_database(today: str) -> Tuple[List[Dict[str, Any]], List[st
             
             # PayPayドーム用の追加情報をnotesから抽出
             notes = event.get("notes", "")
-            if "game_status:" in notes:
+            print(f"[html_export] DEBUG - notes value: {notes} (type: {type(notes)})")
+            
+            # None チェックを追加
+            if notes is not None and "game_status:" in notes:
                 try:
                     # "game_status: 試合前, score: None" のような形式から抽出
                     import re
@@ -128,7 +171,6 @@ def load_events_from_database(today: str) -> Tuple[List[Dict[str, Any]], List[st
                         event["score"] = None if score_value in ["None", "null"] else score_value
                 except Exception as e:
                     print(f"[html_export] Error parsing notes: {e}")
-            
             events.append(event)
         
         # 時刻順ソート
