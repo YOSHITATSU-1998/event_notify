@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.2.6 - ローカル時間統一
+name: Daily Scraper & Dispatch Ver.2.9 - データリフレッシュ統合
 on:
   workflow_dispatch:
     inputs:
@@ -59,30 +59,30 @@ jobs:
           touch event_notify/scrapers/__init__.py
           touch event_notify/utils/__init__.py
           touch event_notify/notify/__init__.py
+          touch event_notify/scripts/__init__.py
       
       - name: Debug environment
         run: |
           echo "Working directory: $(pwd)"
-          echo "Ver.2.6 Environment Variables:"
+          echo "Ver.2.9 Environment Variables:"
           echo "ENABLE_DB_SAVE: $ENABLE_DB_SAVE"
           echo "SUPABASE_URL: ${SUPABASE_URL:0:20}..." # 最初20文字のみ表示
           echo "Directory structure:"
           ls -la event_notify/
           python -c "import event_notify; print('✅ event_notify import OK')"
       
-      - name: Run scrapers (Ver.2.6 - 8 venue system with DB integration)
+      - name: Refresh future events (Ver.2.9 - unified scraping + DB transaction)
         run: |
           set -e
-          echo "🌙 Ver.2.6 スクレイピング開始（ローカル時間統一） - $(date)"
-          python -m event_notify.scrapers.marinemesse_a
-          python -m event_notify.scrapers.marinemesse_b  
-          python -m event_notify.scrapers.kokusai_center
-          python -m event_notify.scrapers.congress_b
-          python -m event_notify.scrapers.sunpalace
-          python -m event_notify.scrapers.paypay_dome
-          python -m event_notify.scrapers.paypay_dome_events
-          python -m event_notify.scrapers.best_denki_stadium
-          echo "✅ Ver.2.6 スクレイピング完了（8会場、ローカル時間統一）"
+          echo "🔄 Ver.2.9 データリフレッシュ開始 - $(date)"
+          cd event_notify
+          python -m scripts.refresh_future_events
+          echo "✅ Ver.2.9 データリフレッシュ完了"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ENABLE_DB_SAVE: "1"
+          TZ: Asia/Tokyo
       
       - name: Generate HTML for web (index.html + manual.html)
         run: |
@@ -191,12 +191,13 @@ jobs:
         env:
           GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
-      - name: Ver.2.6 completion log
+      - name: Ver.2.9 completion log
         run: |
-          echo "🎉 Ver.2.6 実行完了 - $(date)"
+          echo "🎉 Ver.2.9 実行完了 - $(date)"
           echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
-          echo "📊 対応会場: 8会場（ローカル時間統一）"
-          echo "🗄️ データベース: Supabase投入完了"
-          echo "📝 手動イベント: manual_events/対応"
+          echo "📊 対応会場: 8会場（データリフレッシュ方式）"
+          echo "🗄️ データベース: トランザクション更新完了"
+          echo "🔄 量子確定理論: 過去確定・未来リフレッシュ"
+          echo "📝 手動イベント: 完全保護"
           echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
           echo "⏰ 統一スケジュール: 0:30 JST (ローカル時間基準)"
