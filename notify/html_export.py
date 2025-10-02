@@ -466,7 +466,7 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
         <div class="calendar-section">
             <h3>📅 月間カレンダー表示</h3>
             <p>イベント情報を月間カレンダー形式で確認できます</p>
-            <a href="https://fukuoka-events-calendar.vercel.app/" target="_blank" class="calendar-link">今月のカレンダーはこちら（β版）</a>
+            <a href="https://fukuoka-events-calendar.vercel.app/" target="_blank" class="calendar-link">今月のカレンダーはこちら</a>
             <p style="font-size: 0.8em; color: #666; margin-top: 10px;">
                 ※ 日付をクリックして詳細表示
             </p>
@@ -483,7 +483,7 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.2.5 - 8会場対応 + データベース直結システム</p>
+            <p>Ver.3.0 - 8会場対応 （正式運用）</p>
             <p><a href="manual.html" style="color: #95a5a6; text-decoration: none; font-size: 0.8em;">管理者ページへ</a></p>
         </div>
     </div>
