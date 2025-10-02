@@ -5,13 +5,17 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+# リポジトリルートをパスに追加（重要！）
+repo_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repo_root))
+
 # .env自動読み込み
 from dotenv import load_dotenv
 load_dotenv()  # ← これだけで.envが読み込まれる
 
 from supabase import create_client
 
-# スクレイパーのインポート（修正版）
+# スクレイパーのインポート
 from scrapers import (
     marinemesse_a,
     marinemesse_b,
