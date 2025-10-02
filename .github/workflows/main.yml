@@ -23,7 +23,7 @@ jobs:
       id-token: write
     env:
       TZ: Asia/Tokyo
-      PYTHONPATH: ${{ github.workspace }}/event_notify
+      PYTHONPATH: ${{ github.workspace }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
       MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}
