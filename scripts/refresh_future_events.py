@@ -11,8 +11,8 @@ load_dotenv()  # ← これだけで.envが読み込まれる
 
 from supabase import create_client
 
-# スクレイパーのインポート
-from event_notify.scrapers import (
+# スクレイパーのインポート（修正版）
+from scrapers import (
     marinemesse_a,
     marinemesse_b,
     kokusai_center,
