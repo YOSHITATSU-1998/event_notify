@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.2.9 - データリフレッシュ統合
+name: Daily Scraper & Dispatch Ver.3.0 - 正式運用
 on:
   workflow_dispatch:
     inputs:
@@ -192,9 +192,9 @@ jobs:
         env:
           GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
-      - name: Ver.2.9 completion log
+      - name: Ver.3.0 completion log
         run: |
-          echo "🎉 Ver.2.9 実行完了 - $(date)"
+          echo "🎉 Ver.3.0 実行完了 - $(date)"
           echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
           echo "📊 対応会場: 8会場（データリフレッシュ方式）"
           echo "🗄️ データベース: トランザクション更新完了"
