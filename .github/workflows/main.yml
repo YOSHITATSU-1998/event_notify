@@ -23,7 +23,7 @@ jobs:
       id-token: write
     env:
       TZ: Asia/Tokyo
-      PYTHONPATH: ${{ github.workspace }}/..
+      PYTHONPATH: ${{ github.workspace }}/event_notify
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
       MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}
@@ -65,11 +65,12 @@ jobs:
         run: |
           echo "Working directory: $(pwd)"
           echo "Ver.2.9 Environment Variables:"
+          echo "PYTHONPATH: $PYTHONPATH"
           echo "ENABLE_DB_SAVE: $ENABLE_DB_SAVE"
           echo "SUPABASE_URL: ${SUPABASE_URL:0:20}..." # 最初20文字のみ表示
           echo "Directory structure:"
           ls -la event_notify/
-          python -c "import event_notify; print('✅ event_notify import OK')"
+          python -c "import sys; print('Python path:', sys.path)"
       
       - name: Refresh future events (Ver.2.9 - unified scraping + DB transaction)
         run: |
