@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -38,6 +39,11 @@ def run_scraper_safe(scraper_module):
         print(f"[refresh][WARN] {scraper_module.__name__} failed: {e}")
         return False
 
+def generate_hash(event: dict) -> str:
+    """イベントのハッシュを生成（フォールバック用）"""
+    key = f"{event['date']}|{event.get('time', '')}|{event['title']}|{event['venue']}"
+    return hashlib.sha1(key.encode('utf-8')).hexdigest()
+
 def collect_scraped_events(today: str):
     """storage/からスクレイピング結果を収集"""
     events = []
@@ -54,9 +60,20 @@ def collect_scraped_events(today: str):
             try:
                 with open(storage_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    # event_type = 'auto' を明示
+                    
                     for event in data:
+                        # event_type = 'auto' を明示
                         event['event_type'] = 'auto'
+                        
+                        # ★★★ hash → data_hash の変換（後方互換性） ★★★
+                        if 'hash' in event and 'data_hash' not in event:
+                            event['data_hash'] = event.pop('hash')
+                        
+                        # ★★★ data_hashがない場合は生成（フォールバック） ★★★
+                        if 'data_hash' not in event or not event.get('data_hash'):
+                            event['data_hash'] = generate_hash(event)
+                            print(f"[refresh] Generated missing hash for: {event['title']}")
+                    
                     events.extend(data)
                     print(f"[refresh] Loaded {len(data)} events from {code}")
             except Exception as e:
