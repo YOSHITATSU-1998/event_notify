@@ -185,15 +185,11 @@ def extract_event_time(time_str: str) -> str:
 
 def extract_event_title(title_str: str) -> str:
     """
-    "[acosta!@みずほPayPayドーム福岡](https://acosta.jp/...)" 
-    → "acosta!@みずほPayPayドーム福岡"
-    """
-    # [タイトル](URL) パターンから抽出
-    match = re.search(r'\[([^\]]+)\]', title_str)
-    if match:
-        return match.group(1).strip()
+    タイトル抽出（PayPayドーム専用）
     
-    # マークダウンリンクでない場合はそのまま返す
+    注: PayPayドームではマークダウンリンク形式が使われていないため、
+    正規表現処理は不要。そのまま返す。
+    """
     return title_str.strip()
 
 # ---- SCRAPING ---------------------------------------------------------------
@@ -211,11 +207,12 @@ def fetch_year_events(url: str, year: int) -> List[Dict]:
         events = []
         
         # 正しいHTML構造に基づく抽出
-        # dl.temp_calendarList > dt（日付）+ dd（詳細）のペア
         calendar_lists = soup.find_all('dl', class_='temp_calendarList')
         print(f"[DEBUG] Found {len(calendar_lists)} calendar lists for {year}")
         
-        for calendar in calendar_lists:
+        for calendar_idx, calendar in enumerate(calendar_lists):
+            print(f"\n[DEBUG] ===== Calendar List {calendar_idx + 1} =====")
+            
             # dt（日付）とdd（詳細）のペアを処理
             dt_elements = calendar.find_all('dt')
             dd_elements = calendar.find_all('dd')
@@ -223,46 +220,77 @@ def fetch_year_events(url: str, year: int) -> List[Dict]:
             print(f"[DEBUG] Found {len(dt_elements)} dates and {len(dd_elements)} details")
             
             # dtとddのペアを処理
-            for dt, dd in zip(dt_elements, dd_elements):
+            for pair_idx, (dt, dd) in enumerate(zip(dt_elements, dd_elements)):
                 date_text = dt.get_text().strip()
-                print(f"[DEBUG] Processing date: {date_text}")
+                print(f"\n[DEBUG] ----- Pair {pair_idx + 1}: {date_text} -----")
                 
                 # 日付パターンの確認
                 if not re.match(r'\d{4}/\d{1,2}/\d{1,2}（.+）', date_text):
-                    print(f"[DEBUG] Date pattern not matched: {date_text}")
+                    print(f"[DEBUG] [SKIP] Date pattern not matched: {date_text}")
                     continue
+                else:
+                    print(f"[DEBUG] [OK] Date pattern matched")
                 
                 # table内からイベント情報を抽出
                 table = dd.find('table')
                 if not table:
-                    print(f"[DEBUG] No table found for date: {date_text}")
+                    print(f"[DEBUG] [SKIP] No table found")
+                    print(f"[DEBUG] DD HTML preview: {str(dd)[:200]}...")
                     continue
+                else:
+                    print(f"[DEBUG] [OK] Table found")
                 
                 event_title = None
                 event_time = None
                 
                 # tableの行を解析
                 rows = table.find_all('tr')
-                for row in rows:
+                print(f"[DEBUG] Table has {len(rows)} rows")
+                
+                for row_idx, row in enumerate(rows):
                     th = row.find('th')
                     td = row.find('td')
                     
                     if not th or not td:
+                        print(f"[DEBUG]   Row {row_idx}: Missing th or td")
                         continue
                     
                     th_text = th.get_text().strip()
                     td_text = td.get_text().strip()
                     
+                    print(f"[DEBUG]   Row {row_idx}: th='{th_text}', td preview='{td_text[:50]}...'")
+                    
                     if th_text == 'イベント':
-                        # span要素があればその中身、なければtd全体
+                        print(f"[DEBUG]   *** Found 'Event' row ***")
+                        print(f"[DEBUG]   TD full HTML:")
+                        print(td.prettify()[:500])
+                        
+                        # aタグの確認
+                        links = td.find_all('a')
+                        print(f"[DEBUG]   Found {len(links)} <a> tags:")
+                        for i, link in enumerate(links):
+                            link_class = link.get('class', [])
+                            link_text = link.get_text().strip()
+                            print(f"[DEBUG]     Link {i}: class={link_class}, text='{link_text}'")
+                        
+                        # spanタグの確認
+                        spans = td.find_all('span')
+                        print(f"[DEBUG]   Found {len(spans)} <span> tags:")
+                        for i, span in enumerate(spans):
+                            span_text = span.get_text().strip()
+                            print(f"[DEBUG]     Span {i}: text='{span_text}'")
+                        
+                        # 既存のロジック
                         span = td.find('span')
                         event_title = span.get_text().strip() if span else td_text
+                        print(f"[DEBUG]   Extracted title: '{event_title}'")
                         
                     elif th_text in ['開催時間', '開演時間']:
                         event_time = td_text
+                        print(f"[DEBUG]   Extracted time: '{event_time}'")
                 
                 if event_title:
-                    print(f"[DEBUG] Found event: {date_text} | {event_title} | {event_time}")
+                    print(f"[DEBUG] [SUCCESS] EVENT FOUND: {date_text} | {event_title} | {event_time}")
                     events.append({
                         "date_raw": date_text,
                         "title_raw": event_title,
@@ -270,9 +298,11 @@ def fetch_year_events(url: str, year: int) -> List[Dict]:
                         "source_year": year
                     })
                 else:
-                    print(f"[DEBUG] No event title found for date: {date_text}")
+                    print(f"[DEBUG] [SKIP] No event title found for this date")
         
+        print(f"\n[DEBUG] ========================================")
         print(f"[DEBUG] Total events extracted from {year}: {len(events)}")
+        print(f"[DEBUG] ========================================\n")
         return events
         
     except requests.RequestException as e:
@@ -280,6 +310,8 @@ def fetch_year_events(url: str, year: int) -> List[Dict]:
         return []
     except Exception as e:
         print(f"[{META['name']}] Failed to fetch {year}: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def fetch_multi_year_events() -> List[Dict]:
