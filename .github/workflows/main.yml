@@ -18,7 +18,7 @@ jobs:
   unified-update:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write      # ← ここを read から write に変更（重要！）
       pages: write
       id-token: write
     env:
@@ -36,6 +36,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: event_notify
+          token: ${{ secrets.GITHUB_TOKEN }}  # ← 追加（自動コミット用）
       
       - uses: actions/setup-python@v5
         with:
@@ -126,6 +127,15 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
       
+      # ============================================================
+      # ✨ 新規追加: Git設定（自動コミット用）
+      # ============================================================
+      - name: Configure Git for auto-commit
+        run: |
+          cd event_notify
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      
       - name: Setup Node.js for screenshot
         uses: actions/setup-node@v4
         with:
@@ -192,6 +202,31 @@ jobs:
         env:
           GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
+      # ============================================================
+      # ✨ 新規追加: 自動コミット（60日間停止防止）
+      # ============================================================
+      - name: Auto-commit to prevent workflow disabling
+        run: |
+          cd event_notify
+          echo "🔄 自動コミット実行（60日間停止防止）"
+          
+          # 最終実行日時を記録
+          CURRENT_DATE=$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S JST')
+          echo "Last automated run: ${CURRENT_DATE}" > .github/LAST_RUN.txt
+          echo "Workflow run number: ${{ github.run_number }}" >> .github/LAST_RUN.txt
+          echo "Ver.3.0 - 正式運用" >> .github/LAST_RUN.txt
+          
+          # 変更があるかチェック
+          git add .github/LAST_RUN.txt
+          
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes to commit"
+          else
+            git commit -m "Auto-update: Daily scraper run #${{ github.run_number }} - ${CURRENT_DATE}"
+            git push
+            echo "✅ 自動コミット完了: ${CURRENT_DATE}"
+          fi
+      
       - name: Ver.3.0 completion log
         run: |
           echo "🎉 Ver.3.0 実行完了 - $(date)"
@@ -202,3 +237,4 @@ jobs:
           echo "📝 手動イベント: 完全保護"
           echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
           echo "⏰ 統一スケジュール: 0:30 JST (ローカル時間基準)"
+          echo "🔐 自動停止防止: .github/LAST_RUN.txt 自動更新"
