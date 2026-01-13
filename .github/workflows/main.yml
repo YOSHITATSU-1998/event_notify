@@ -1,4 +1,4 @@
-name: Daily Scraper & Dispatch Ver.3.0 - 正式運用
+name: Daily Scraper & Dispatch Ver.3.1.2 - リトライ戦略実装
 on:
   workflow_dispatch:
     inputs:
@@ -12,15 +12,15 @@ on:
           - pages-only
           - slack-only
   schedule:
-    - cron: '30 15 * * *'   # JST 00:30 - Pages更新 + Slack通知（統一）
+    - cron: '37 15 * * *'   # JST 00:37 - 中途半端な時刻で混雑回避
 
 jobs:
   unified-update:
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # ← ここを read から write に変更（重要！）
-      pages: write
-      id-token: write
+      contents: write      # 自動コミット用
+      pages: write         # Pages デプロイ用
+      id-token: write      # Pages デプロイ用（必須）
     env:
       TZ: Asia/Tokyo
       PYTHONPATH: ${{ github.workspace }}
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: event_notify
-          token: ${{ secrets.GITHUB_TOKEN }}  # ← 追加（自動コミット用）
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - uses: actions/setup-python@v5
         with:
@@ -65,10 +65,10 @@ jobs:
       - name: Debug environment
         run: |
           echo "Working directory: $(pwd)"
-          echo "Ver.2.9 Environment Variables:"
+          echo "Ver.3.1.2 Environment Variables:"
           echo "PYTHONPATH: $PYTHONPATH"
           echo "ENABLE_DB_SAVE: $ENABLE_DB_SAVE"
-          echo "SUPABASE_URL: ${SUPABASE_URL:0:20}..." # 最初20文字のみ表示
+          echo "SUPABASE_URL: ${SUPABASE_URL:0:20}..."
           echo "Directory structure:"
           ls -la event_notify/
           python -c "import sys; print('Python path:', sys.path)"
@@ -76,10 +76,10 @@ jobs:
       - name: Refresh future events (Ver.2.9 - unified scraping + DB transaction)
         run: |
           set -e
-          echo "🔄 Ver.2.9 データリフレッシュ開始 - $(date)"
+          echo "🔄 Ver.3.1.2 データリフレッシュ開始 - $(date)"
           cd event_notify
           python -m scripts.refresh_future_events
-          echo "✅ Ver.2.9 データリフレッシュ完了"
+          echo "✅ Ver.3.1.2 データリフレッシュ完了"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -123,12 +123,79 @@ jobs:
         with:
           path: site
       
-      - name: Deploy to GitHub Pages
-        id: deployment
+      # ============================================================
+      # ✨ Ver.3.1.2 新機能: 3回リトライ戦略
+      # ============================================================
+      
+      - name: Deploy to GitHub Pages (1st attempt)
+        id: deployment_1
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 900000  # 15分（ミリ秒単位）
+        continue-on-error: true
+      
+      - name: Wait before 2nd attempt
+        if: steps.deployment_1.outcome == 'failure'
+        run: |
+          echo "⏳ 1st attempt failed. Waiting 5 minutes before retry..."
+          echo "💡 Reason: GitHub Pages deployment queue is congested"
+          sleep 300
+      
+      - name: Deploy to GitHub Pages (2nd attempt)
+        if: steps.deployment_1.outcome == 'failure'
+        id: deployment_2
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 900000  # 15分
+        continue-on-error: true
+      
+      - name: Wait before 3rd attempt
+        if: steps.deployment_2.outcome == 'failure'
+        run: |
+          echo "⏳ 2nd attempt failed. Waiting 10 minutes before final retry..."
+          echo "💡 Queue should be clear after 15 minutes total wait"
+          sleep 600
+      
+      - name: Deploy to GitHub Pages (3rd attempt - FINAL)
+        if: steps.deployment_2.outcome == 'failure'
+        id: deployment_3
+        uses: actions/deploy-pages@v4
+        with:
+          timeout: 1200000  # 20分（最終試行は余裕を持たせる）
+      
+      - name: Verify deployment success
+        run: |
+          echo "🔍 Checking deployment results..."
+          
+          if [ "${{ steps.deployment_1.outcome }}" == "success" ]; then
+            echo "✅ Pages deployment succeeded (1st attempt)"
+            echo "⏱️ Total time: ~15 minutes"
+            echo "FINAL_DEPLOYMENT_URL=${{ steps.deployment_1.outputs.page_url }}" >> $GITHUB_ENV
+            echo "DEPLOYMENT_ATTEMPT=1" >> $GITHUB_ENV
+            echo "DEPLOYMENT_SUCCESS=true" >> $GITHUB_ENV
+          elif [ "${{ steps.deployment_2.outcome }}" == "success" ]; then
+            echo "✅ Pages deployment succeeded (2nd attempt after 5min wait)"
+            echo "⏱️ Total time: ~25 minutes (15min + 5min wait + 15min)"
+            echo "FINAL_DEPLOYMENT_URL=${{ steps.deployment_2.outputs.page_url }}" >> $GITHUB_ENV
+            echo "DEPLOYMENT_ATTEMPT=2" >> $GITHUB_ENV
+            echo "DEPLOYMENT_SUCCESS=true" >> $GITHUB_ENV
+          elif [ "${{ steps.deployment_3.outcome }}" == "success" ]; then
+            echo "✅ Pages deployment succeeded (3rd attempt after 15min total wait)"
+            echo "⏱️ Total time: ~50 minutes (15min + 5min + 15min + 10min + 20min)"
+            echo "FINAL_DEPLOYMENT_URL=${{ steps.deployment_3.outputs.page_url }}" >> $GITHUB_ENV
+            echo "DEPLOYMENT_ATTEMPT=3" >> $GITHUB_ENV
+            echo "DEPLOYMENT_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "❌ All 3 deployment attempts failed"
+            echo "❌ Total wait time: 15 minutes"
+            echo "❌ Total timeout time: 50 minutes"
+            echo "💡 Recommendation: Try running manually later"
+            echo "DEPLOYMENT_SUCCESS=false" >> $GITHUB_ENV
+            exit 1
+          fi
       
       # ============================================================
-      # ✨ 新規追加: Git設定（自動コミット用）
+      # Git設定（自動コミット用）
       # ============================================================
       - name: Configure Git for auto-commit
         run: |
@@ -186,13 +253,15 @@ jobs:
           fi
           echo "📂 Manual events directory ready"
       
+      # ============================================================
+      # ✨ Ver.3.1.2 修正: 統一された環境変数を使用
+      # ============================================================
       - name: Get Pages URL for notification
         run: |
-          REPO_OWNER=$(echo ${{ github.repository }} | cut -d'/' -f1)
-          REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2)
-          echo "GITHUB_PAGES_URL=https://${REPO_OWNER}.github.io/${REPO_NAME}/" >> $GITHUB_ENV
+          echo "📱 Setting Pages URL for Slack notification"
+          echo "GITHUB_PAGES_URL=${{ env.FINAL_DEPLOYMENT_URL }}" >> $GITHUB_ENV
       
-      - name: Dispatch notification (0:30 unified schedule)
+      - name: Dispatch notification (0:37 unified schedule)
         run: |
           set -e
           echo "📢 統一スケジュール通知開始 - $(date)"
@@ -203,7 +272,7 @@ jobs:
           GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
       # ============================================================
-      # ✨ 新規追加: 自動コミット（60日間停止防止）
+      # 自動コミット（60日間停止防止）
       # ============================================================
       - name: Auto-commit to prevent workflow disabling
         run: |
@@ -214,7 +283,8 @@ jobs:
           CURRENT_DATE=$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S JST')
           echo "Last automated run: ${CURRENT_DATE}" > .github/LAST_RUN.txt
           echo "Workflow run number: ${{ github.run_number }}" >> .github/LAST_RUN.txt
-          echo "Ver.3.0 - 正式運用" >> .github/LAST_RUN.txt
+          echo "Ver.3.1.2 - リトライ戦略実装" >> .github/LAST_RUN.txt
+          echo "Deployment attempt: ${{ env.DEPLOYMENT_ATTEMPT }}" >> .github/LAST_RUN.txt
           
           # 変更があるかチェック
           git add .github/LAST_RUN.txt
@@ -222,19 +292,24 @@ jobs:
           if git diff --staged --quiet; then
             echo "ℹ️ No changes to commit"
           else
-            git commit -m "Auto-update: Daily scraper run #${{ github.run_number }} - ${CURRENT_DATE}"
+            git commit -m "Auto-update: Daily scraper run #${{ github.run_number }} - ${CURRENT_DATE} [skip ci]"
             git push
             echo "✅ 自動コミット完了: ${CURRENT_DATE}"
           fi
       
-      - name: Ver.3.0 completion log
+      # ============================================================
+      # ✨ Ver.3.1.2 修正: デプロイ試行回数を含む完了ログ
+      # ============================================================
+      - name: Ver.3.1.2 completion log
         run: |
-          echo "🎉 Ver.3.0 実行完了 - $(date)"
-          echo "📱 Pages URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "🎉 Ver.3.1.2 実行完了 - $(date)"
+          echo "📱 Pages URL: ${{ env.FINAL_DEPLOYMENT_URL }}"
+          echo "🔄 Deployment succeeded on attempt #${{ env.DEPLOYMENT_ATTEMPT }}"
           echo "📊 対応会場: 8会場（データリフレッシュ方式）"
           echo "🗄️ データベース: トランザクション更新完了"
           echo "🔄 量子確定理論: 過去確定・未来リフレッシュ"
           echo "📝 手動イベント: 完全保護"
           echo "📸 スクリーンショット: daily-screenshot-${{ github.run_number }}"
-          echo "⏰ 統一スケジュール: 0:30 JST (ローカル時間基準)"
+          echo "⏰ スケジュール: JST 00:37（中途半端な時刻で混雑回避）"
           echo "🔐 自動停止防止: .github/LAST_RUN.txt 自動更新"
+          echo "♻️ リトライ戦略: 最大3回（5分・10分待機）"
