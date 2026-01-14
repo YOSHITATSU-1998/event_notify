@@ -1,4 +1,4 @@
-# notify/html_export.py Ver.2.5対応版（データベース直結 + フォールバック）
+# notify/html_export.py Ver.3.1.3（天気情報表示機能追加版）
 import os
 import sys
 import json
@@ -298,7 +298,7 @@ def generate_venue_list() -> str:
     return "\n".join(lines)
 
 def create_html_content(today: str, event_message: str, venue_list: str, data_source: str) -> str:
-    """index.html全体を生成（カレンダーリンク + 意見箱セクション + データソース表示）"""
+    """Ver.3.1.3: 天気情報セクション追加版HTML生成"""
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     
     html = f"""<!DOCTYPE html>
@@ -328,6 +328,23 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
             margin-bottom: 10px;
             border-bottom: 3px solid #3498db;
             padding-bottom: 15px;
+        }}
+        .weather-section {{
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 5px;
+            border: 1px solid #bbdefb;
+            font-weight: bold;
+            color: #1565c0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }}
+        .weather-icon {{
+            font-size: 1.5em;
         }}
         .update-time {{
             text-align: center;
@@ -452,6 +469,11 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
 <body>
     <div class="container">
         <h1>福岡イベント情報</h1>
+        
+        <div id="weather-section" class="weather-section">
+            <span class="weather-icon">⌛</span> 天気読み込み中...
+        </div>
+        
         <div class="update-time">最終更新: {current_time}</div>
         <div class="data-source">データソース: {data_source}</div>
         
@@ -483,10 +505,58 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.3.0 - 8会場対応 （正式運用）</p>
+            <p>Ver.3.1.3 - 8会場対応（天気情報機能追加）</p>
             <p><a href="manual.html" style="color: #95a5a6; text-decoration: none; font-size: 0.8em;">管理者ページへ</a></p>
         </div>
     </div>
+    
+    <script>
+    (function() {{
+        const weatherSection = document.getElementById('weather-section');
+        
+        fetch('https://api.open-meteo.com/v1/forecast?latitude=33.59&longitude=130.40&current=temperature_2m,weather_code&timezone=Asia/Tokyo')
+            .then(response => response.json())
+            .then(data => {{
+                const temp = Math.round(data.current.temperature_2m);
+                const code = data.current.weather_code;
+                
+                const weatherMap = {{
+                    0: {{ icon: '☀', text: '晴れ' }},
+                    1: {{ icon: '☀', text: '晴れ' }},
+                    2: {{ icon: '⛅', text: '曇り' }},
+                    3: {{ icon: '☁', text: '曇り' }},
+                    45: {{ icon: '🌫', text: '霧' }},
+                    48: {{ icon: '🌫', text: '霧' }},
+                    51: {{ icon: '☔', text: '小雨' }},
+                    53: {{ icon: '☔', text: '小雨' }},
+                    55: {{ icon: '☔', text: '小雨' }},
+                    61: {{ icon: '☔', text: '雨' }},
+                    63: {{ icon: '☔', text: '雨' }},
+                    65: {{ icon: '☔', text: '雨' }},
+                    71: {{ icon: '☃', text: '雪' }},
+                    73: {{ icon: '☃', text: '雪' }},
+                    75: {{ icon: '☃', text: '雪' }},
+                    80: {{ icon: '⚡', text: '雷雨' }},
+                    81: {{ icon: '⚡', text: '雷雨' }},
+                    82: {{ icon: '⚡', text: '雷雨' }},
+                    95: {{ icon: '⚡', text: '雷雨' }},
+                    96: {{ icon: '⚡', text: '雷雨' }},
+                    99: {{ icon: '⚡', text: '雷雨' }}
+                }};
+                
+                const weather = weatherMap[code] || {{ icon: '☁', text: '曇り' }};
+                
+                weatherSection.innerHTML = `
+                    <span class="weather-icon">${{weather.icon}}</span>
+                    <span>${{weather.text}} / 気温: ${{temp}}℃</span>
+                `;
+            }})
+            .catch(error => {{
+                console.error('天気情報の取得に失敗:', error);
+                weatherSection.style.display = 'none';
+            }});
+    }})();
+    </script>
 </body>
 </html>"""
     return html
@@ -840,7 +910,7 @@ def create_manual_html() -> str:
             // モダンブラウザ対応
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(text).then(() => {
-                    alert('✅ JSONをクリップボードにコピーしました！\\nmanual_events/ フォルダの該当ファイルに貼り付けてください。');
+                    alert('✅ JSONをクリップボードにコピーしました!\\nmanual_events/ フォルダの該当ファイルに貼り付けてください。');
                 }).catch((err) => {
                     console.error('Clipboard API failed:', err);
                     fallbackCopy(text);
@@ -924,7 +994,7 @@ def export_manual_html():
 def export_html():
     """Ver.2.5: データベース優先・フォールバック対応版HTMLファイル生成"""
     try:
-        print("[html_export] Starting Ver.2.5 HTML generation (database-first with fallback)...")
+        print("[html_export] Starting Ver.3.1.3 HTML generation (with weather info)...")
         
         # 今日の日付を取得
         today = determine_today_standalone()
@@ -978,6 +1048,7 @@ def export_html():
         print(f"[html_export] Events included: {len(events)}")
         print(f"[html_export] Missing venues: {missing}")
         print(f"[html_export] Data source: {data_source}")
+        print(f"[html_export] Ver.3.1.3 - Weather info feature added")
         
         # Ver.1.8: manual.html も生成
         export_manual_html()
