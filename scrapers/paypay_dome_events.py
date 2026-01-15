@@ -1,4 +1,4 @@
-# scrapers/paypay_dome_events.py Ver.2.0 + 年跨ぎ対応 + DB投入機能
+﻿# scrapers/paypay_dome_events.py Ver.2.0 + 年跨ぎ対応 + DB投入機能
 import os
 import json
 import time
@@ -13,7 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # parser.pyから必要な機能をインポート
-from event_notify.utils.parser import split_and_normalize, JST
+from utils.parser import split_and_normalize, JST
 
 # Supabase投入用（オプション）
 try:

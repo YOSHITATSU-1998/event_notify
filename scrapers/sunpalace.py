@@ -1,4 +1,4 @@
-# scrapers/sunpalace.py Ver.2.0 + DB投入機能
+﻿# scrapers/sunpalace.py Ver.2.0 + DB投入機能
 import os
 import re
 import sys
@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from bs4 import BeautifulSoup
 
-from event_notify.utils.parser import split_and_normalize, JST
+from utils.parser import split_and_normalize, JST
 
 # Supabase投入用（オプション）
 try:

@@ -1,4 +1,4 @@
-# scrapers/marinemesse_a.py Ver.2.0 + DB投入機能
+﻿# scrapers/marinemesse_a.py Ver.2.0 + DB投入機能
 import os
 import json
 import time
@@ -12,7 +12,7 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
-from event_notify.utils.parser import split_and_normalize, JST
+from utils.parser import split_and_normalize, JST
 
 # Supabase投入用（オプション）
 try:

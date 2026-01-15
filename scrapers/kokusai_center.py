@@ -1,4 +1,4 @@
-# scrapers/kokusai_center.py Ver.2.0 + DB投入機能
+﻿# scrapers/kokusai_center.py Ver.2.0 + DB投入機能
 import os
 import json
 import time
@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from event_notify.utils.parser import split_and_normalize, JST
+from utils.parser import split_and_normalize, JST
 
 # Supabase投入用（オプション）
 try:

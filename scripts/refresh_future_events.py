@@ -120,17 +120,27 @@ def main():
         print("[refresh][WARN] No events collected, skipping refresh")
         return
     
-    # 4. Supabase接続（.envから自動読み込み）
+    # 4. DB保存の有効/無効チェック
+    enable_db_save = os.getenv("ENABLE_DB_SAVE", "0") == "1"
+    
+    if not enable_db_save:
+        print("[refresh] ENABLE_DB_SAVE=0, skipping database operations")
+        print(f"[refresh] ✅ Collected {len(all_events)} events and saved to JSON files")
+        print("[refresh] === Future Events Refresh Complete ===")
+        return
+    
+    # 5. Supabase接続（.envから自動読み込み）
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
     
     if not supabase_url or not supabase_key:
         print("[refresh][ERROR] Missing SUPABASE credentials in .env")
+        print("[refresh][INFO] Set ENABLE_DB_SAVE=0 to skip database operations")
         sys.exit(1)
     
     supabase = create_client(supabase_url, supabase_key)
     
-    # 5. トランザクション実行
+    # 6. トランザクション実行
     try:
         print("[refresh] Executing transaction...")
         result = supabase.rpc('refresh_future_auto_events', {

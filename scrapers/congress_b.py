@@ -1,4 +1,4 @@
-# scrapers/congress_b.py Ver.2.0 + DB投入機能
+﻿# scrapers/congress_b.py Ver.2.0 + DB投入機能
 # 福岡国際会議場（思い出ネーム: コングレスB）
 # 出力：storage/{date}_d.json（schema_version=1.0）
 # Ver.2.0: 当月1日～翌月末日の2ヶ月分データを保存 + Supabase投入
