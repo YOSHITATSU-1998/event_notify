@@ -302,6 +302,7 @@ CREATE TABLE events (
 |     | **サンパレス: HP刷新対応 → 新HTML構造 (ul.schedule_table) に対応** |
 |     | **共通API処理モジュール `utils/marinemesse_api.py` を新設** |
 |     | **旧スクレイパーを `scrapers/old/` にアーカイブ** |
+| 3.2.1 | API直叩きに伴う年跨ぎ問題・自動年推定の対応 (期間展開・単日) |
 
 ## 📄 ライセンス
 
