@@ -1,29 +1,32 @@
-# 福岡イベント自動通知システム
+# 福岡イベント自動通知システム Ver.3.2
 
-福岡市内の主要会場のイベント情報を自動収集し、Slack/LINEで通知するシステムです。
+福岡市内の主要8会場のイベント情報を自動収集し、Slack/LINEで通知するシステム。
 
 ## 📋 概要
 
-このシステムは以下の流れで動作します：
-
 ```
-スクレイピング → データ保存 → HTML生成 → 通知送信
-     ↓              ↓           ↓          ↓
-  8つの会場      JSON + DB   GitHub Pages  Slack/LINE
+データ取得 ─────→ 正規化 → JSON保存 → HTML生成 → 通知送信
+  │                 ↓        ↓          ↓          ↓
+  ├─ CMS API直叩き  parser.py  storage/   GitHub     Slack
+  ├─ HTMLスクレイピング          ↓       Pages      LINE
+  └─ Yahoo!APIパース          Supabase
 ```
 
-### 対応会場
+### 対応会場 & データソース
 
-| # | 会場名 | コード | 取得期間 |
-|---|--------|--------|----------|
-| 1 | マリンメッセ福岡A館 | `a` | 当月1日〜翌月末日 |
-| 2 | マリンメッセ福岡B館 | `b` | 当月1日〜翌月末日 |
-| 3 | 福岡国際センター | `c` | 当月1日〜翌月末日 |
-| 4 | 福岡国際会議場 | `d` | 当月1日〜翌月末日 |
-| 5 | 福岡サンパレス | `e` | 当月1日〜翌月末日 |
-| 6 | PayPayドーム（野球） | `f` | 8週間分 |
-| 7 | PayPayドーム（イベント） | `f_event` | 当月1日〜翌月末日 |
-| 8 | ベスト電器スタジアム | `g` | 当月1日〜翌月末日 |
+| # | 会場名 | code | データソース | 取得方式 |
+|---|--------|------|-------------|----------|
+| 1 | マリンメッセ福岡A館 | `a` | Studio Design CMS API | `requests` JSON |
+| 2 | マリンメッセ福岡B館 | `b` | Studio Design CMS API | `requests` JSON |
+| 3 | 福岡国際センター | `c` | Studio Design CMS API | `requests` JSON |
+| 4 | 福岡国際会議場 | `d` | Studio Design CMS API | `requests` JSON |
+| 5 | 福岡サンパレス | `e` | 公式HP（静的HTML） | `requests` + BS4 |
+| 6 | PayPayドーム（野球） | `f` | Yahoo!スポーツ | `requests` + BS4 |
+| 7 | PayPayドーム（イベント） | `f_event` | 公式HP | Playwright |
+| 8 | ベスト電器スタジアム | `g` | Yahoo!スポーツ | `requests` + BS4 |
+
+> **Note**: 会場1〜4は2026年3月のNuxt.js(Vue.js)リニューアルにより、
+> HTMLスクレイピングからCMS API直叩きに移行。Playwright不要で高速化。
 
 ## 🏗️ システム構成
 
@@ -31,32 +34,29 @@
 
 ```
 event_notify/
-├── scrapers/          # スクレイパー（8会場分）
-│   ├── marinemesse_a.py
-│   ├── marinemesse_b.py
-│   ├── kokusai_center.py
-│   ├── congress_b.py
-│   ├── sunpalace.py
-│   ├── paypay_dome.py
-│   ├── paypay_dome_events.py
-│   └── best_denki_stadium.py
-├── scripts/           # 実行スクリプト
-│   └── refresh_future_events.py  # メイン実行スクリプト
-├── utils/             # 共通ユーティリティ
-│   └── parser.py      # 日付・時刻パース処理
-├── notify/            # 通知・HTML生成
-│   ├── dispatch.py    # Slack/LINE通知
-│   └── html_export.py # HTML生成
-├── storage/           # スクレイピング結果（JSON）
-│   ├── YYYY-MM-DD_a.json
-│   ├── YYYY-MM-DD_b.json
-│   └── ...
-├── site/              # 生成されたHTML（GitHub Pages用）
-│   ├── index.html
-│   └── manual.html
-├── run/               # ローカル実行用スクリプト
-│   └── dispatch.ps1   # PowerShell一括実行スクリプト
-└── .env               # 環境変数設定（要作成）
+├── scrapers/              # データ取得モジュール（8会場分）
+│   ├── marinemesse_a.py   #   A館  — CMS API (薄いラッパー)
+│   ├── marinemesse_b.py   #   B館  — CMS API
+│   ├── kokusai_center.py  #   国際センター — CMS API
+│   ├── congress_b.py      #   国際会議場 — CMS API
+│   ├── sunpalace.py       #   サンパレス — HTMLパース (ul.schedule_table)
+│   ├── paypay_dome.py     #   PayPayドーム(野球)
+│   ├── paypay_dome_events.py  # PayPayドーム(イベント)
+│   ├── best_denki_stadium.py  # ベスト電器スタジアム
+│   └── old/               #   旧スクレイパーのアーカイブ
+├── scripts/
+│   └── refresh_future_events.py  # オーケストレーター
+├── utils/
+│   ├── parser.py          # 日付・時刻パーサー (split_and_normalize)
+│   └── marinemesse_api.py # マリンメッセ系4会場 CMS API共通モジュール
+├── notify/
+│   ├── dispatch.py        # Slack/LINE通知
+│   └── html_export.py     # HTML生成 (GitHub Pages用)
+├── storage/               # 出力JSON (YYYY-MM-DD_{code}.json)
+├── site/                  # 生成HTML (index.html, manual.html)
+├── run/
+│   └── dispatch.ps1       # ローカル一括実行 (PowerShell)
+└── .env                   # 環境変数設定
 ```
 
 ## 🚀 セットアップ
@@ -120,34 +120,59 @@ python -m notify.dispatch
 
 ## 🔧 動作の仕組み
 
-### 1. スクレイピング処理
+### 1. データ取得（会場タイプ別）
 
-各スクレイパーは以下の処理を実行：
+#### A) CMS API方式 — マリンメッセ系4会場 (a/b/c/d)
+
+Nuxt.js(Vue.js)リニューアルにより静的HTMLにデータが存在しなくなったため、
+バックエンドの **Studio Design CMS API** を直接叩く方式に移行（Ver.3.2）。
 
 ```python
-# 例: marinemesse_a.py
-1. 当月と翌月のURLを生成
-   https://www.marinemesse.or.jp/messe/event/?yy=2026&mm=1
-   https://www.marinemesse.or.jp/messe/event/?yy=2026&mm=2
+# utils/marinemesse_api.py → run_venue_scraper(meta)
+1. CMS API にGETリクエスト
+   https://api.cms.studiodesignapp.com/v2/search?q={base64_json}
+   - project_id: 共通 (4会場同一プロジェクト)
+   - filter_id:  会場ごとに異なる (sdl2o80Z, zcqrIhoh, etc.)
 
-2. HTMLを取得してパース（BeautifulSoup）
+2. JSONレスポンスからイベント情報を抽出
+   - title:    fields.default.mapValue.fields.title.stringValue
+   - datetime: fields.default.mapValue.fields.RIeOyB9L.stringValue
 
-3. イベント情報を抽出
-   - 日付（date）
-   - 時刻（time）
-   - タイトル（title）
-   - 会場（venue）
+3. 日程文字列の前処理 (preprocess_datetime)
+   - <br> → スペース
+   - 全角スラッシュ／ → スペース
+   - 全角コロン：→ 半角:
+   - 丸数字①② / 装飾記号★ を除去
+   - 日付時刻結合 "7.4(土)13:00" → "7.4(土) 13:00" に分離
 
-4. 正規化処理（utils/parser.py）
-   - 日付フォーマット統一（YYYY-MM-DD）
-   - 時刻フォーマット統一（HH:MM）
-   - 全角/半角の統一
+4. parser.py の split_and_normalize() で正規化・展開
+   期間表記 "3.25(水)～29(日)" → 5日間に展開
+   複数公演 "18:00～ / 12:00～" → 別レコードに分離
 
-5. 重複排除（data_hashで判定）
-
-6. JSONファイルに保存
-   storage/2026-01-16_a.json
+5. 重複排除 → SHA-1ハッシュ → JSON保存
 ```
+
+各スクレイパーは **META辞書のみ** を定義し `run_venue_scraper(META)` を呼ぶ薄いラッパー（約20行）。
+
+#### B) HTMLスクレイピング方式 — サンパレス (e)
+
+```python
+# scrapers/sunpalace.py
+1. 月別URLで2ページ取得
+   https://www.f-sunpalace.com/hall/?ym=YYYY-MM#schedule
+
+2. CSSセレクタでパース
+   ul.schedule_table > li
+     p.date > span.en  → 日付（数字）
+     p.name            → タイトル
+     p.starting        → 開演時刻 ("開演HH:MM" を正規表現で抽出)
+
+3. 複数公演展開 → 重複排除 → JSON保存
+```
+
+#### C) その他の会場 (f/f_event/g)
+
+PayPayドーム(野球/イベント)、ベスト電器スタジアムは従来方式を継続。
 
 ### 2. データベース保存
 
@@ -233,13 +258,23 @@ CREATE TABLE events (
 
 ## 🔍 トラブルシューティング
 
-### スクレイピングが失敗する
+### マリンメッセ系4会場 (a/b/c/d) のデータが取れない
 
-- **会場サイトのHTML構造が変更された可能性**
-  - 該当スクレイパーのセレクタを更新する必要あり
-  
-- **ネットワークエラー**
-  - タイムアウト設定を確認（通常15秒）
+- **CMS APIの仕様変更**: `api.cms.studiodesignapp.com` のエンドポイント/パラメータが変わった可能性
+  - ブラウザDevToolsのNetworkタブで実際のAPIリクエストを確認
+  - `utils/marinemesse_api.py` の `PROJECT_ID`, `SCHEMA_KEY`, フィールドキーを更新
+- **会場フィルタIDの変更**: `filter_id` が変わった場合は各スクレイパーのMETAを更新
+
+### サンパレス (e) のデータが取れない
+
+- **HTML構造の変更**: `ul.schedule_table > li` のセレクタが変わった可能性
+  - ブラウザでページを開き、実際のHTML構造を確認
+- **URL形式の変更**: `?ym=YYYY-MM` のパラメータ形式を確認
+
+### ネットワーク/タイムアウトエラー
+
+- タイムアウト設定: 各スクレイパー15秒（`timeout=15`）
+- GitHub Actions環境ではDNS解決に時間がかかる場合あり
 
 ### データベース接続エラー
 
@@ -248,7 +283,7 @@ CREATE TABLE events (
 ```
 
 - Supabase URLが存在しない、または削除された
-- `.env`ファイルの`ENABLE_DB_SAVE=0`で無効化可能
+- `.env`の`ENABLE_DB_SAVE=0`でDB保存をスキップ可能（JSON保存は継続）
 
 ### Slack通知が届かない
 
@@ -257,10 +292,16 @@ CREATE TABLE events (
 
 ## 📝 開発履歴
 
-- **Ver.1.0** - 基本的なスクレイピング機能
-- **Ver.1.8** - 8会場対応、GitHub Actions統合
-- **Ver.2.0** - Supabase統合、2ヶ月分データ取得、年跨ぎ対応
-- **Ver.3.1.2** - リトライ戦略実装（GitHub Pages）
+| Ver. | 内容 |
+|------|------|
+| 1.0 | 基本的なスクレイピング機能 |
+| 1.8 | 8会場対応、GitHub Actions統合 |
+| 2.0 | Supabase統合、2ヶ月分データ取得、年跨ぎ対応 |
+| 3.1.2 | GitHub Pagesデプロイ リトライ戦略実装 (最大3回) |
+| **3.2** | **マリンメッセ系4会場: Nuxt.jsリニューアル対応 → CMS API直叩きに移行** |
+|     | **サンパレス: HP刷新対応 → 新HTML構造 (ul.schedule_table) に対応** |
+|     | **共通API処理モジュール `utils/marinemesse_api.py` を新設** |
+|     | **旧スクレイパーを `scrapers/old/` にアーカイブ** |
 
 ## 📄 ライセンス
 
@@ -268,8 +309,8 @@ CREATE TABLE events (
 
 ## 👤 作成者
 
-ヨッシー + Claude
+ヨッシー + Claude（Browser版 & Antigravity版の協調作業）
 
 ---
 
-**最終更新**: 2026年1月16日
+**最終更新**: 2026年3月24日
