@@ -18,11 +18,16 @@ _RANGE_PAT = re.compile(
 _TIME_ANY = re.compile(r'(?P<h>\d{1,2}):(?P<mi>\d{2})')
 
 def _expand_dates(y: int, m1: int, d1: int, m2: int, d2: int):
-    """年 y で [m1/d1 .. m2/d2] を両端含めて日ごと展開。無効日はスキップ。"""
+    """年 y で [m1/d1 .. m2/d2] を両端含めて日ごと展開。
+    年跨ぎ対応: m2 < m1 の場合は終了日を翌年として展開する。
+    例: _expand_dates(2026, 12, 30, 1, 2) → 12/30, 12/31, 1/1, 1/2
+    """
     out = []
     try:
         cur = date(y, m1, d1)
-        end = date(y, m2, d2)
+        # 年跨ぎ: 終了月 < 開始月 の場合は翌年
+        end_year = y + 1 if m2 < m1 else y
+        end = date(end_year, m2, d2)
     except ValueError:
         return out
     if cur > end:
@@ -31,6 +36,19 @@ def _expand_dates(y: int, m1: int, d1: int, m2: int, d2: int):
         out.append(cur)
         cur += timedelta(days=1)
     return out
+
+def _infer_year(base_year: int, month: int, current_month: int) -> int:
+    """年跨ぎ推定: 10月以降に実行し、1-3月のイベントが出た場合は翌年と推定。
+    
+    例:
+      current_month=12, month=1 → base_year + 1（翌年1月）
+      current_month=12, month=3 → base_year + 1（翌年3月）
+      current_month=3,  month=1 → base_year（今年1月 = 過去、filterで除外される）
+      current_month=6,  month=8 → base_year（今年8月 = 未来）
+    """
+    if current_month >= 10 and month <= 3:
+        return base_year + 1
+    return base_year
 
 def split_and_normalize(dt_text: str, title: str, venue: str, year: int | None = None):
     """
@@ -42,9 +60,15 @@ def split_and_normalize(dt_text: str, title: str, venue: str, year: int | None =
       
     '9.3(水)～7(日)'  ← 月省略パターンに対応
       → 9/3〜9/7 を日ごと展開（開始月を終了日にも適用）
+      
+    '12.30(火)～1.2(金)' ← 年跨ぎ対応
+      → 12/30〜翌年1/2 を日ごと展開
     """
+    # year=None → 自動推定モード（年跨ぎ補正あり）
+    _auto_infer = (year is None)
     if year is None:
         year = datetime.now(JST).year
+    _current_month = datetime.now(JST).month
 
     out = []
     # '|' 以降に施設備考が来ることがあるので手前だけ使う
@@ -88,7 +112,8 @@ def split_and_normalize(dt_text: str, title: str, venue: str, year: int | None =
         if dm:
             mm = int(dm.group('m')); dd = int(dm.group('d'))
             try:
-                current_date = date(year, mm, dd)
+                use_year = _infer_year(year, mm, _current_month) if _auto_infer else year
+                current_date = date(use_year, mm, dd)
             except ValueError:
                 current_date = None
             continue
@@ -113,7 +138,8 @@ def split_and_normalize(dt_text: str, title: str, venue: str, year: int | None =
         for dm in _date_pat.finditer(left):
             mm = int(dm.group('m')); dd = int(dm.group('d'))
             try:
-                d = date(year, mm, dd)
+                use_year = _infer_year(year, mm, _current_month) if _auto_infer else year
+                d = date(use_year, mm, dd)
                 out.append({
                     "date": d.strftime("%Y-%m-%d"),
                     "time": None,

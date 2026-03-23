@@ -288,7 +288,6 @@ def run_venue_scraper(meta: Dict) -> None:
     code = meta["code"]
     source_url = meta["source_url"]
     schema_version = meta["schema_version"]
-    base_year = datetime.now(JST).year
 
     target_date = _resolve_target_date()
     print(f"[{name}] target_date={target_date}")
@@ -297,6 +296,7 @@ def run_venue_scraper(meta: Dict) -> None:
     raw_events = fetch_raw_events(meta["filter_id"], name)
 
     # 2) 日程文字列を前処理 → parser.py で正規化・展開
+    #    year=None で呼ぶことで自動年推定モード（年跨ぎ補正あり）を有効化
     normalized: List[Dict] = []
     for ev in raw_events:
         dt_text = preprocess_datetime(ev["datetime_raw"])
@@ -306,7 +306,7 @@ def run_venue_scraper(meta: Dict) -> None:
             continue
 
         try:
-            parsed = split_and_normalize(dt_text, ev["title"], venue, base_year)
+            parsed = split_and_normalize(dt_text, ev["title"], venue)
             normalized.extend(parsed)
         except Exception as e:
             print(f"[{name}][WARN] Parse failed for '{dt_text}': {e}")
