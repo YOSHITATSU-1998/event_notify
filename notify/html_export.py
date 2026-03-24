@@ -269,6 +269,33 @@ def build_message_standalone(today: str, events: List[Dict[str, Any]], missing: 
 
     return "\n".join(lines)
 
+
+def build_clean_cards_standalone(today: str, events: List[Dict[str, Any]], missing: List[str]) -> str:
+    """Ver.4.0: シンプル＆クリーンUI用のHTMLカードを生成"""
+    lines = [f'<div class="event-header">【本日のイベント】{today}</div>']
+    
+    if not events:
+        lines.append('<div class="empty-event">本日の掲載イベントは見つかりませんでした。</div>')
+    else:
+        for ev in events:
+            time_value = ev.get("time")
+            time_str = time_value if time_value else "（時刻未定）"
+            title = ev.get("title", "")
+            venue = ev.get("venue", "")
+            
+            lines.append(f"""
+            <div class="event-item">
+                <div class="event-meta">
+                    <span class="event-time">{time_str}</span><span class="event-separator">｜</span><span class="event-venue">{venue}</span>
+                </div>
+                <div class="event-title">{title}</div>
+            </div>
+            """)
+            
+    if missing:
+        lines.append(f'<div class="missing-alert"><br>取得できなかった会場: {", ".join(missing)}</div>')
+
+    return "\n".join(lines)
 def generate_venue_list() -> str:
     """VENUES配列から会場一覧HTMLを生成（リンク化・PayPayドーム統合）"""
     # PayPayドーム重複削除
@@ -308,163 +335,216 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>福岡イベント情報 - {today}</title>
     <style>
+
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
             line-height: 1.6;
-            background-color: #f8f9fa;
+            background-color: #f0f2f5;
+            color: #1a1a1a;
         }}
         .container {{
-            background: white;
+            background: #ffffff;
             padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }}
         h1 {{
-            color: #2c3e50;
+            color: #1a1a1a;
             text-align: center;
-            margin-bottom: 10px;
-            border-bottom: 3px solid #3498db;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 3px solid #1877f2;
             padding-bottom: 15px;
         }}
         .weather-section {{
             text-align: center;
             margin-bottom: 20px;
-            padding: 10px;
-            background: #e3f2fd;
-            border-radius: 5px;
-            border: 1px solid #bbdefb;
+            padding: 12px;
+            background: #e7f3ff;
+            border-radius: 6px;
+            border: 1px solid #cce4ff;
             font-weight: bold;
-            color: #1565c0;
+            color: #1877f2;
             display: flex;
             justify-content: center;
             align-items: center;
             gap: 10px;
+            font-size: 1.1em;
         }}
         .weather-icon {{
             font-size: 1.5em;
         }}
         .update-time {{
             text-align: center;
-            color: #7f8c8d;
+            color: #65676b;
             font-size: 0.9em;
-            margin-bottom: 30px;
+            margin-bottom: 10px;
         }}
         .data-source {{
             text-align: center;
-            color: #27ae60;
-            font-size: 0.8em;
+            color: #2e890c;
+            font-size: 0.85em;
             font-weight: bold;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             padding: 8px;
-            background: #f0f8f0;
-            border-radius: 4px;
+            background: #f0fcf0;
+            border: 1px solid #d4f4d4;
+            border-radius: 6px;
         }}
         .content {{
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
+            background: #fafafa;
+            padding: 25px;
+            border-radius: 8px;
             margin-bottom: 30px;
+            border: 1px solid #e4e6eb;
         }}
-        pre {{
+        
+        .event-header {{ 
+            font-weight: bold; 
+            font-size: 1.1em; 
+            color: #1a1a1a;
+            margin-bottom: 20px; 
+            border-bottom: 2px solid #ccd0d5; 
+            padding-bottom: 8px; 
+        }}
+        .event-item {{ 
+            margin-bottom: 20px; 
+            padding-bottom: 20px; 
+            border-bottom: 1px dashed #ced0d4; 
+        }}
+        .event-item:last-child {{ 
+            margin-bottom: 0; 
+            border-bottom: none; 
+            padding-bottom: 0;
+        }}
+        .event-meta {{ 
+            font-size: 1.05em; 
+            color: #65676b; 
+            margin-bottom: 4px; 
+        }}
+        .event-time {{ 
+            font-weight: bold; 
+            color: #1a1a1a; 
+            font-size: 1.2em; 
+            letter-spacing: 0.5px;
+        }}
+        .event-separator {{ 
+            color: #bcc0c4; 
+            margin: 0 6px; 
+        }}
+        .event-venue {{ 
+            color: #1877f2; 
+            font-weight: bold; 
+        }}
+        .event-title {{ 
+            font-size: 1.3em; 
+            font-weight: bold; 
+            color: #1a1a1a; 
+            line-height: 1.4; 
+            margin-top: 4px;
+        }}
+        .empty-event {{ 
+            color: #65676b; 
+            padding: 20px 0; 
+            text-align: center; 
+        }}
+        .missing-alert {{
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 0.95em;
+        }}
+        
+        pre {{ 
             white-space: pre-wrap;
             word-wrap: break-word;
-            font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
             font-size: 14px;
-            line-height: 1.5;
-            color: #2c3e50;
+            line-height: 1.6;
+            color: #1a1a1a;
+            font-family: inherit;
             margin: 0;
         }}
         .venue-section {{
-            background: #e8f4fd;
+            background: #f0f2f5;
             padding: 20px;
-            border-radius: 5px;
-            border-left: 4px solid #3498db;
+            border-radius: 6px;
+            border-left: 4px solid #1877f2;
             margin-bottom: 30px;
         }}
         .venue-link {{
-            color: #2980b9;
+            color: #1877f2;
             text-decoration: none;
-            transition: color 0.3s ease;
+            font-weight: bold;
         }}
         .venue-link:hover {{
-            color: #3498db;
+            color: #0c56c2;
             text-decoration: underline;
         }}
         .calendar-section {{
-            background: #f0f8f0;
+            background: #f0fcf0;
             padding: 20px;
-            border-radius: 5px;
-            border-left: 4px solid #27ae60;
+            border-radius: 6px;
+            border-left: 4px solid #2e890c;
             text-align: center;
             margin-bottom: 30px;
         }}
         .calendar-link {{
             display: inline-block;
-            background: #27ae60;
+            background: #2e890c;
             color: white;
-            padding: 12px 24px;
+            padding: 14px 28px;
             text-decoration: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-weight: bold;
-            font-size: 16px;
-            transition: background-color 0.3s ease;
+            font-size: 1.1em;
+            transition: background-color 0.2s ease;
             margin-top: 10px;
         }}
         .calendar-link:hover {{
-            background: #219a52;
-            text-decoration: none;
+            background: #23690a;
         }}
         .opinion-section {{
-            background: #fff5cd;
+            background: #fff8e6;
             padding: 20px;
-            border-radius: 5px;
-            border-left: 4px solid #f39c12;
+            border-radius: 6px;
+            border-left: 4px solid #f5a623;
             text-align: center;
             margin-bottom: 30px;
         }}
         .opinion-link {{
             display: inline-block;
-            background: #f39c12;
+            background: #f5a623;
             color: white;
-            padding: 12px 24px;
+            padding: 14px 28px;
             text-decoration: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-weight: bold;
-            font-size: 16px;
-            transition: background-color 0.3s ease;
+            font-size: 1.1em;
+            transition: background-color 0.2s ease;
             margin-top: 10px;
         }}
         .opinion-link:hover {{
-            background: #e67e22;
-            text-decoration: none;
+            background: #d68f1c;
         }}
         .footer {{
             text-align: center;
             margin-top: 40px;
             padding-top: 20px;
-            border-top: 1px solid #ecf0f1;
-            color: #95a5a6;
-            font-size: 0.85em;
+            border-top: 1px solid #e4e6eb;
+            color: #65676b;
+            font-size: 0.9em;
         }}
         @media (max-width: 600px) {{
-            body {{
-                padding: 10px;
-            }}
-            .container {{
-                padding: 15px;
-            }}
-            pre {{
-                font-size: 13px;
-            }}
-            .calendar-link, .opinion-link {{
-                font-size: 14px;
-                padding: 10px 20px;
-            }}
+            body {{ padding: 8px; }}
+            .container {{ padding: 15px; }}
+            .event-time {{ font-size: 1.1em; }}
+            .event-title {{ font-size: 1.2em; }}
+            .calendar-link, .opinion-link {{ font-size: 1em; padding: 12px 20px; width: 90%; }}
         }}
-    </style>
+    
+</style>
 </head>
 <body>
     <div class="container">
@@ -478,7 +558,7 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
         <div class="data-source">データソース: {data_source}</div>
         
         <div class="content">
-            <pre>{event_message}</pre>
+            {event_message}
         </div>
         
         <div class="venue-section">
@@ -1037,7 +1117,7 @@ def export_html():
         print(f"[html_export] Target date: {today}")
         
         # データソース・イベント取得（優先度制御）
-        data_source = "データベース（GitHub Pages生成時点）"
+        data_source = "データベース"
         events = []
         missing = []
         
@@ -1061,7 +1141,7 @@ def export_html():
                 events, missing = [], []
         
         # メッセージ生成（Ver.1.6: 2行表示対応）
-        event_message = build_message_standalone(today, events, missing)
+        event_message = build_clean_cards_standalone(today, events, missing)
         print(f"[html_export] Generated message: {len(event_message)} characters")
         
         # 会場一覧を生成（リンク化・統合処理）
@@ -1102,3 +1182,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

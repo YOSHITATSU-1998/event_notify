@@ -263,6 +263,7 @@ jobs:
       
       - name: Dispatch notification (0:37 unified schedule)
         run: |
+        
           set -e
           echo "📢 統一スケジュール通知開始 - $(date)"
           cd event_notify
