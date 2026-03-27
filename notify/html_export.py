@@ -325,7 +325,7 @@ def generate_venue_list() -> str:
     return "\n".join(lines)
 
 def create_html_content(today: str, event_message: str, venue_list: str, data_source: str) -> str:
-    """Ver.3.1.4: 天気情報自動更新機能追加版HTML生成"""
+    """Ver.3.2.2: キャッシュ無効化＋天気情報自動更新機能版HTML生成"""
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     
     html = f"""<!DOCTYPE html>
@@ -333,6 +333,9 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>福岡イベント情報 - {today}</title>
     <style>
 
@@ -585,12 +588,27 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
         
         <div class="footer">
             <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-            <p>Ver.3.1.4 - 8会場対応（天気情報自動更新機能）</p>
+            <p>Ver.3.2.2 - 8会場対応（キャッシュ無効化対応）</p>
             <p><a href="manual.html" style="color: #95a5a6; text-decoration: none; font-size: 0.8em;">管理者ページへ</a></p>
         </div>
     </div>
     
     <script>
+    // Ver.3.2.2: 日付ベースのキャッシュバスター（ローカル時間=JST基準）
+    (function() {{
+        const now = new Date();
+        const today = now.getFullYear() + '-'
+            + String(now.getMonth() + 1).padStart(2, '0') + '-'
+            + String(now.getDate()).padStart(2, '0');
+        const url = new URL(window.location);
+        const lastLoad = url.searchParams.get('t');
+        if (lastLoad !== today) {{
+            url.searchParams.set('t', today);
+            window.location.replace(url.toString());
+            return; // リダイレクト後は以降のスクリプトを実行しない
+        }}
+    }})();
+
     (function() {{
         const weatherSection = document.getElementById('weather-section');
         
