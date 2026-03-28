@@ -422,12 +422,12 @@ export default function Home() {
             <div className="mt-8 pt-6 border-t border-gray-100 text-center">
               <div className="space-y-2 text-sm text-gray-600">
                 {/* PC版（1行） */}
-                <p className="venue-list-desktop">福岡市内主要イベント会場の情報を自動収集・配信しています</p>
+                <p className="venue-list-desktop">福岡市内主要イベント会場の情報を自動収集・配信しています (Ver.3.4)</p>
                 
                 {/* スマホ版（2行） */}
                 <div className="venue-list-mobile">
                   <p>福岡市内主要イベント会場の情報を</p>
-                  <p>自動収集・配信しています</p>
+                  <p>自動収集・配信しています (Ver.3.4)</p>
                 </div>
                 
                 {/* PC版（横並び・リンク付き） */}
