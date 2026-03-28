@@ -1,21 +1,13 @@
-# notify/dispatch.py Ver.1.6対応版（スマホファースト・2行表示対応）
+# notify/dispatch.py Ver.3.3対応版（実行ログ通知専用）
 import os
-import json
-import hashlib
 import sys
 from datetime import datetime, timezone, timedelta
-from typing import List, Tuple, Dict, Any
-from pathlib import Path
+from typing import List, Tuple, Dict
 import requests
 
 # パス解決
+from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
-try:
-    from utils.paths import STORAGE_DIR
-except ImportError:
-    # STORAGE_DIRを直接定義
-    STORAGE_DIR = Path(__file__).parent.parent / "storage"
-    STORAGE_DIR.mkdir(exist_ok=True)
 
 # --- 設定 ---------------------------------------------------------------
 JST = timezone(timedelta(hours=9))
@@ -25,27 +17,19 @@ VENUES: List[Tuple[str, str]] = [
     ("c", "福岡国際センター"),
     ("d", "福岡国際会議場"),
     ("e", "福岡サンパレス"),
-    ("f", "みずほPayPayドーム"),  # Ver.1.3追加
-    ("f_event", "みずほPayPayドーム（イベント）"),  # 1.4実装
-    ("g","ベスト電器スタジアム")#1.6実装
+    ("f", "みずほPayPayドーム"),
+    ("f_event", "みずほPayPayドーム（イベント）"),
+    ("g", "ベスト電器スタジアム")
 ]
 CODE_INDEX: Dict[str, int] = {c: i for i, (c, _) in enumerate(VENUES)}
 CODE2NAME: Dict[str, str] = {c: n for c, n in VENUES}
-LAST_SENT_PATH = (STORAGE_DIR / "last_sent.txt")
 
 # ★ 環境変数から取得
 def get_webhook_urls():
     slack_url = os.getenv("SLACK_WEBHOOK_URL")
-    line_token = os.getenv("LINE_NOTIFY_TOKEN")
-    
     if not slack_url:
         print("[dispatch][WARN] SLACK_WEBHOOK_URL not set")
-    
-    return slack_url, line_token
-
-def get_github_pages_url():
-    """GitHub Pages URLを取得（環境変数から）"""
-    return os.getenv("GITHUB_PAGES_URL", "")
+    return slack_url
 
 # --- ユーティリティ ------------------------------------------------------
 def determine_today() -> str:
@@ -53,145 +37,6 @@ def determine_today() -> str:
     if override:
         return override
     return datetime.now(JST).strftime("%Y-%m-%d")
-
-def _read_json_array(path) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        return list(data.values())
-    return []
-
-def _time_key(t: str | None) -> str:
-    return t if (t and len(t) == 5) else "99:99"
-
-def _sort_key(ev: Dict[str, Any]):
-    return (_time_key(ev.get("time")), ev.get("title", ""), CODE_INDEX.get(ev.get("code",""), 10**9))
-
-# --- コア ---------------------------------------------------------------
-def load_events_for(today: str) -> tuple[list[Dict[str, Any]], list[str]]:
-    all_ev: list[Dict[str, Any]] = []
-    missing: list[str] = []
-
-    for code, _name in VENUES:
-        path = STORAGE_DIR / f"{today}_{code}.json"
-        try:
-            arr = _read_json_array(path)
-        except FileNotFoundError:
-            missing.append(code)
-            continue
-        except Exception as e:
-            print(f"[dispatch][WARN] read fail code={code} msg=\"{e}\"")
-            missing.append(code)
-            continue
-
-        for obj in arr:
-            date = obj.get("date")
-            title = obj.get("title")
-            if not date or not title:
-                continue
-            if date != today:
-                continue
-            
-            # Ver.1.3: PayPayドーム用通知フィルター
-            # for_notification が false の場合は通知対象外（試合終了など）
-            if obj.get("for_notification") == False:
-                print(f"[dispatch] Skipping non-notification event: {title}")
-                continue
-            
-            ev = {
-                "date": date,
-                "time": obj.get("time"),
-                "title": title,
-                "venue": obj.get("venue") or CODE2NAME.get(code, ""),
-                "source": obj.get("source"),
-                "hash": obj.get("hash"),
-                "code": code,
-                "game_status": obj.get("game_status"),  # PayPayドーム用
-                "score": obj.get("score"),  # PayPayドーム用
-            }
-            all_ev.append(ev)
-
-    seen: set[str] = set()
-    uniq: list[Dict[str, Any]] = []
-    for ev in all_ev:
-        key = ev.get("hash") or f"{ev['date']}|{ev.get('time') or ''}|{ev['title']}|{ev['venue']}"
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append(ev)
-
-    uniq.sort(key=_sort_key)
-    return uniq, missing
-
-# --- 整形（Ver.1.6: スマホファースト対応） ----------------------------------
-def format_message_mobile_friendly(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
-    """Ver.1.6: スマホファースト・2行表示対応版"""
-    lines: list[str] = [f"【本日のイベント】{today}"]
-
-    if not events:
-        lines.append("")  # タイトルとの区切り
-        lines.append("本日の掲載イベントは見つかりませんでした。")
-    else:
-        lines.append("")  # タイトルとイベント一覧の区切り
-        for ev in events:
-            time_str = ev.get("time") if ev.get("time") else "（時刻未定）"
-            venue = ev.get("venue", "")
-            title = ev.get("title", "")
-            
-            # Ver.1.6: 2行表示 + 空白行区切り
-            lines.append(f"- {time_str}｜{venue}")
-            lines.append(title)
-            # 最後のイベント以外に空白行追加
-            if ev != events[-1]:  # 最後のイベントでなければ空白行
-                lines.append("")
-
-    if missing:
-        lines.append("")  # イベントとmissing情報の区切り
-        missing_names = [CODE2NAME.get(code, code) for code in missing]
-        lines.append("取得できなかった会場: " + ", ".join(missing_names))
-
-    # Ver.1.6: 詳細URL（必ず表示・固定URL）
-    lines.append("")  # 空白行
-    lines.append("詳細はこちら👇")
-    lines.append("https://yoshitatsu-1998.github.io/event_notify/")
-
-    return "\n".join(lines)
-
-# --- 整形（従来版・互換性保持） ------------------------------------------
-def format_message(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
-    """従来版（1行表示）"""
-    lines: list[str] = [f"【本日のイベント】{today}"]
-
-    if not events:
-        lines.append("本日の掲載イベントは見つかりませんでした。")
-    else:
-        for ev in events:
-            t = ev.get("time") if ev.get("time") else "（時刻未定）"
-            lines.append(f"- {t}｜{ev.get('title','')}（{ev.get('venue','')}）")
-
-    if missing:
-        missing_names = [CODE2NAME.get(code, code) for code in missing]
-        lines.append("取得できなかった会場: " + ", ".join(missing_names))
-
-    # Ver.1.3: Web URL追加
-    if pages_url:
-        lines.append(f"詳細: {pages_url}")
-
-    return "\n".join(lines)
-
-# --- 再送防止（保存だけ残す） --------------------------------------------
-def _body_sha1(body: str) -> str:
-    return hashlib.sha1(body.encode("utf-8")).hexdigest()
-
-def save_body_hash(body: str) -> None:
-    try:
-        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-        with open(LAST_SENT_PATH, "w", encoding="utf-8") as f:
-            f.write(_body_sha1(body))
-    except Exception as e:
-        print(f"[dispatch][WARN] last_sent write fail msg=\"{e}\"")
 
 # --- 送信 ---------------------------------------------------------------
 def send_to_slack(text: str, webhook_url: str) -> bool:
@@ -207,42 +52,67 @@ def send_to_slack(text: str, webhook_url: str) -> bool:
         print(f"[dispatch][ERROR] Slack msg=\"{e}\"")
         return False
 
-def send_to_line(text: str, line_token: str) -> bool:
-    if not line_token:
-        return False
-    try:
-        r = requests.post(
-            "https://notify-api.line.me/api/notify",
-            headers={"Authorization": f"Bearer {line_token}"},
-            data={"message": text},
-            timeout=15,
-        )
-        print(f"[dispatch] line status={r.status_code}")
-        r.raise_for_status()
-        return True
-    except Exception as e:
-        print(f"[dispatch][ERROR] LINE msg=\"{e}\"")
-        return False
+# --- メッセージ生成 ------------------------------------------------------
+import unicodedata
 
-# --- build_message 関数（Web出力と共用） ----------------------------------
-def build_message(today: str, events: list[Dict[str, Any]], missing: list[str], pages_url: str = "") -> str:
-    """Slack通知とWeb出力で共用する純関数（Ver.1.6: スマホファースト対応）"""
-    # Ver.1.6: 新しいフォーマットを使用
-    return format_message_mobile_friendly(today, events, missing, pages_url)
+def get_east_asian_width_count(text: str) -> int:
+    """全角文字を2、半角文字を1として文字幅を計算する"""
+    count = 0
+    for c in text:
+        if unicodedata.east_asian_width(c) in 'FWA':
+            count += 2
+        else:
+            count += 1
+    return count
 
-# --- main ----------------------------------------------------------------
-def main() -> None:
-    print("[dispatch] start Ver.1.6")
+def build_log_message(today: str, venue_counts: dict) -> str:
+    """件数ログメッセージを生成する純関数"""
+    current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
+    lines = [f"【実行ログ】{current_time}"]
+    
+    # 整形用フォーマット: 最長の会場名に合わせてパディング
+    # 全角文字と半角文字が混在するため概算の幅合わせ
+    total_count = 0
+    for code, name in VENUES:
+        count = venue_counts.get(code, 0)
+        total_count += count
+        
+        # 0件の場合は⚠️マーク
+        status_icon = "✅" if count > 0 else "⚠️"
+        
+        # 名前を省略して揃える（例：マリンメッセA館 -> A館）
+        short_name = name
+        if "マリンメッセ" in name:
+            short_name = name.replace("マリンメッセ", "")
+        elif "福岡国際センター" in name:
+            short_name = "国際センター"
+        elif "福岡国際会議場" in name:
+            short_name = "国際会議場"
+        elif "福岡サンパレス" in name:
+            short_name = "サンパレス"
+        elif "みずほPayPayドーム（イベント）" in name:
+            short_name = "PayPay(イベ)"
+        elif "みずほPayPayドーム" in name:
+            short_name = "PayPayドーム"
+        elif "ベスト電器スタジアム" in name:
+            short_name = "ベスト電器S"
+            
+        # 16文字分でパディング（全角/半角混合対応）
+        width = get_east_asian_width_count(short_name)
+        padding = max(0, 16 - width)
+        formatted_name = short_name + " " * padding
+        lines.append(f"{formatted_name}: {count:3}件 {status_icon}")
+        
+    lines.append("─────────────")
+    lines.append(f"合計: {total_count}件")
+    
+    return "\n".join(lines)
+
+# --- エントリポイント ------------------------------------------------------
+def send_log(venue_counts: dict) -> None:
+    """refresh_future_events.pyから呼び出すエントリポイント"""
     today = determine_today()
-    events, missing = load_events_for(today)
-    print(f"[dispatch] gathered items={len(events)} missing={missing}")
-
-    # GitHub Pages URL取得（不要になったのでコメントアウト）
-    # pages_url = get_github_pages_url()
-    # if pages_url:
-    #     print(f"[dispatch] pages_url={pages_url}")
-
-    body = build_message(today, events, missing)
+    body = build_log_message(today, venue_counts)
     print("[dispatch] preview:\n" + body)
 
     # DRY_RUN チェック
@@ -250,17 +120,13 @@ def main() -> None:
         print("[dispatch] DRY_RUN mode - not sending")
         return
 
-    # ★ 環境変数から取得
-    slack_url, line_token = get_webhook_urls()
+    slack_url = get_webhook_urls()
 
     # 送信実行
-    sent = False
-    sent = send_to_slack(body, slack_url) or sent
-    sent = send_to_line(body, line_token) or sent
-
-    print(f"[dispatch] sent={sent} venues={len(VENUES)}")
-    if sent:
-        save_body_hash(body)
+    sent = send_to_slack(body, slack_url)
+    print(f"[dispatch] sent={sent}")
 
 if __name__ == "__main__":
-    main()
+    # 単体テスト用
+    dummy_counts = {"a": 35, "b": 24, "c": 14, "d": 46, "e": 12, "f": 8, "f_event": 6, "g": 3}
+    send_log(dummy_counts)

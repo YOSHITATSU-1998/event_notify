@@ -45,8 +45,9 @@ def generate_hash(event: dict) -> str:
     return hashlib.sha1(key.encode('utf-8')).hexdigest()
 
 def collect_scraped_events(today: str):
-    """storage/からスクレイピング結果を収集"""
+    """storage/からスクレイピング結果を収集し、件数も集計する"""
     events = []
+    venue_counts = {}
     
     venue_codes = ['a', 'b', 'c', 'd', 'e', 'f', 'f_event', 'g']
     storage_dir = Path(__file__).resolve().parents[1] / "storage"
@@ -75,13 +76,16 @@ def collect_scraped_events(today: str):
                             print(f"[refresh] Generated missing hash for: {event['title']}")
                     
                     events.extend(data)
+                    venue_counts[code] = len(data)
                     print(f"[refresh] Loaded {len(data)} events from {code}")
             except Exception as e:
                 print(f"[refresh][ERROR] Failed to load {code}: {e}")
+                venue_counts[code] = 0
         else:
             print(f"[refresh][WARN] Not found: {storage_file}")
+            venue_counts[code] = 0
     
-    return events
+    return events, venue_counts
 
 def main():
     print("[refresh] === Future Events Refresh Start ===")
@@ -112,8 +116,17 @@ def main():
     
     print(f"[refresh] Scrapers: {success_count}/{len(scrapers)} succeeded")
     
-    # 3. スクレイピング結果を収集
-    all_events = collect_scraped_events(today)
+    # 3. スクレイピング結果と件数を収集
+    all_events, venue_counts = collect_scraped_events(today)
+    
+    # ★ 4. Slackに件数ログを送信（0件でも送る）
+    # notifyモジュールは実行時に解決（repo_rootを追加しているためOKのはずだが、安全のため関数内でimport）
+    try:
+        from notify import dispatch
+        dispatch.send_log(venue_counts)
+    except Exception as e:
+        print(f"[refresh][WARN] Failed to send dispatch log: {e}")
+    
     print(f"[refresh] Collected {len(all_events)} total events")
     
     if not all_events:
