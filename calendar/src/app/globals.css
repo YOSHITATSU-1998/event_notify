@@ -1,0 +1,435 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ========================================
+   カレンダー基本設定
+======================================== */
+
+/* カレンダーのサイズを大きくする */
+.react-calendar-large {
+  width: 600px !important;
+  max-width: 100% !important;
+  font-size: 16px !important;
+}
+
+.react-calendar-large .react-calendar__tile {
+  height: 60px !important;
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  padding: 4px !important;
+  position: relative;
+}
+
+.react-calendar-large .react-calendar__navigation button {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  min-width: 50px !important;
+  height: 50px !important;
+}
+
+/* ========================================
+   カレンダー枠線・レイアウト
+======================================== */
+
+.react-calendar-large .react-calendar__month-view__days {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.react-calendar-large .react-calendar__tile {
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.react-calendar-large .react-calendar__tile:nth-child(7n) {
+  border-right: none;
+}
+
+.react-calendar-large .react-calendar__month-view__weekdays {
+  border: 1px solid #e5e7eb;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background-color: #f9fafb;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 12px 0 !important;
+}
+
+.react-calendar-large .react-calendar__month-view__weekdays__weekday {
+  border-right: 1px solid #e5e7eb;
+}
+
+.react-calendar-large .react-calendar__month-view__weekdays__weekday:last-child {
+  border-right: none;
+}
+
+/* ========================================
+   曜日・土日・祝日の色分け
+======================================== */
+
+/* 曜日ヘッダーの色分け */
+.react-calendar__month-view__weekdays__weekday abbr[title="土曜日"] {
+  color: #2563eb !important;
+}
+
+.react-calendar__month-view__weekdays__weekday abbr[title="日曜日"] {
+  color: #dc2626 !important;
+}
+
+/* 土曜日・日曜日の色分け */
+.react-calendar__tile:nth-child(7n-1) {
+  color: #2563eb !important;
+}
+
+.react-calendar__tile:nth-child(7n) {
+  color: #dc2626 !important;
+}
+
+/* ホバー時の色 */
+.react-calendar__tile:nth-child(7n-1):hover {
+  color: #2563eb !important;
+  background-color: #eff6ff !important;
+}
+
+.react-calendar__tile:nth-child(7n):hover {
+  color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+}
+
+/* 祝日の色設定 */
+.react-calendar-large .holiday-tile {
+  color: #dc2626 !important;
+}
+
+.react-calendar-large .holiday-tile:hover {
+  color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+}
+
+/* ========================================
+   カスタム日付・イベント件数表示
+======================================== */
+
+/* デフォルトの日付表示を非表示 */
+.react-calendar-large .react-calendar__tile abbr {
+  display: none !important;
+}
+
+.tile-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.date-number {
+  font-size: 18px;
+  font-weight: 500;
+  text-align: left;
+  line-height: 1;
+  align-self: flex-start;
+}
+
+.event-count {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+
+/* イベント件数別の色設定 */
+.no-count {
+  color: #999 !important;
+  opacity: 0.7 !important;
+}
+
+.low-count {
+  color: #333 !important;
+}
+
+.medium-count {
+  color: #f59e0b !important;
+}
+
+.high-count {
+  color: #ef4444 !important;
+}
+
+/* ========================================
+   選択・今日の日付表示
+======================================== */
+
+/* 選択された日付を枠線表示 */
+.react-calendar-large .react-calendar__tile--active {
+  background: transparent !important;
+  border: 3px solid #2563eb !important;
+  color: inherit !important;
+}
+
+.react-calendar-large .react-calendar__tile--active:hover {
+  background: transparent !important;
+  border: 3px solid #2563eb !important;
+}
+
+/* 今日の日付を黒い枠線表示 */
+.react-calendar-large .react-calendar__tile--now {
+  background: transparent !important;
+  border: 3px solid #333 !important;
+  color: inherit !important;
+}
+
+.react-calendar-large .react-calendar__tile--now:hover {
+  background: transparent !important;
+  border: 3px solid #333 !important;
+}
+
+/* 今日かつ選択された日付の場合 */
+.react-calendar-large .react-calendar__tile--now.react-calendar__tile--active {
+  border: 3px solid #2563eb !important;
+}
+
+/* ========================================
+   色の優先度調整
+======================================== */
+
+/* 選択された日付でも件数色・曜日色を維持 */
+.react-calendar-large .react-calendar__tile--active .date-number {
+  color: inherit !important;
+}
+
+.react-calendar-large .react-calendar__tile--active .event-count.low-count {
+  color: #333 !important;
+}
+
+.react-calendar-large .react-calendar__tile--active .event-count.medium-count {
+  color: #f59e0b !important;
+}
+
+.react-calendar-large .react-calendar__tile--active .event-count.high-count {
+  color: #ef4444 !important;
+}
+
+/* 土曜日・日曜日でも件数色を維持 */
+.react-calendar__tile:nth-child(7n-1) .event-count.medium-count,
+.react-calendar__tile:nth-child(7n) .event-count.medium-count {
+  color: #f59e0b !important;
+}
+
+.react-calendar__tile:nth-child(7n-1) .event-count.high-count,
+.react-calendar__tile:nth-child(7n) .event-count.high-count {
+  color: #ef4444 !important;
+}
+
+/* 選択された土曜日・日曜日の色維持 */
+.react-calendar__tile:nth-child(7n-1).react-calendar__tile--active .date-number {
+  color: #2563eb !important;
+}
+
+.react-calendar__tile:nth-child(7n).react-calendar__tile--active .date-number {
+  color: #dc2626 !important;
+}
+
+.react-calendar__tile:nth-child(7n-1).react-calendar__tile--active .event-count.medium-count,
+.react-calendar__tile:nth-child(7n).react-calendar__tile--active .event-count.medium-count {
+  color: #f59e0b !important;
+}
+
+.react-calendar__tile:nth-child(7n-1).react-calendar__tile--active .event-count.high-count,
+.react-calendar__tile:nth-child(7n).react-calendar__tile--active .event-count.high-count {
+  color: #ef4444 !important;
+}
+
+/* ========================================
+   レスポンシブ対応（Ver.2.4追加）
+======================================== */
+
+/* タブレット用（481px〜767px） */
+@media (min-width: 481px) and (max-width: 767px) {
+  .react-calendar-large {
+    width: 90% !important;
+  }
+  
+  .react-calendar-large .react-calendar__tile {
+    height: 50px !important;
+  }
+  
+  .date-number {
+    font-size: 16px;
+  }
+  
+  .event-count {
+    font-size: 16px !important;
+  }
+}
+
+/* スマホ用（480px以下） */
+@media (max-width: 480px) {
+  /* メインタイトル修正 */
+  h1 {
+    font-size: 1.4rem !important;
+    line-height: 1.3 !important;
+  }
+  
+  /* ボタンテキスト修正 */
+  .text-white {
+    font-size: 0.9rem !important;
+  }
+  
+  /* 詳細ページタイトル修正 */
+  .text-2xl {
+    font-size: 1.2rem !important;
+    line-height: 1.3 !important;
+  }
+  
+  /* カレンダー調整 */
+  .react-calendar-large {
+    width: 95% !important;
+  }
+  
+  .react-calendar-large .react-calendar__tile {
+    height: 45px !important;
+  }
+  
+  .react-calendar-large .react-calendar__navigation button {
+    font-size: 16px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+  }
+  
+  .date-number {
+    font-size: 14px;
+  }
+  
+  .event-count {
+    font-size: 15px !important;
+    font-weight: 400 !important;
+    opacity: 0.8;
+  }
+}
+
+/* スマホ用（480px以下） */
+@media (max-width: 480px) {
+  /* 詳細ページタイトルのみピンポイント修正 */
+  .border-t .text-xl {
+    font-size: 1rem !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* または親要素で絞り込み */
+  .border-t.border-gray-200 h2.text-xl {
+    font-size: 1rem !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* フッター会場名調整 */
+  .text-sm {
+    font-size: 0.8rem !important;
+    line-height: 1.3 !important;
+  }
+}
+
+/* PC版は横並び（現在のまま） */
+.venue-list-desktop {
+  display: block;
+}
+
+.venue-list-mobile {
+  display: none;
+}
+
+/* スマホ版は縦列表示 */
+@media (max-width: 480px) {
+  .venue-list-desktop {
+    display: none;
+  }
+  
+  .venue-list-mobile {
+    display: block;
+  }
+  
+  .venue-list-mobile ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+  }
+  
+  .venue-list-mobile li {
+    padding: 2px 0;
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .venue-list-mobile {
+    text-align: left !important;
+  }
+  
+  .venue-list-mobile ul {
+    text-align: left;
+    margin-left: 0;
+    padding-left: 0;
+  }
+  
+  .venue-list-mobile li {
+    text-align: left;
+  }
+}
+
+/* PC表示（デフォルト） */
+.venue-list-desktop {
+  display: block;
+}
+
+.venue-list-mobile {
+  display: none;
+}
+
+/* スマホ表示（480px以下） */
+@media (max-width: 480px) {
+  .venue-list-desktop {
+    display: none;
+  }
+  
+  .venue-list-mobile {
+    display: block;
+  }
+  
+  .venue-list-mobile ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .venue-list-mobile li {
+    margin-bottom: 4px;
+    font-size: 14px;
+  }
+}
