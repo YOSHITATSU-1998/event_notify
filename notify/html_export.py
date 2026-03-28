@@ -286,7 +286,8 @@ def build_clean_cards_standalone(today: str, events: List[Dict[str, Any]], missi
             lines.append(f"""
             <div class="event-item">
                 <div class="event-meta">
-                    <span class="event-time">{time_str}</span><span class="event-separator">｜</span><span class="event-venue">{venue}</span>
+                    <span class="event-time">{time_str}</span>
+                    <span class="event-venue">{venue}</span>
                 </div>
                 <div class="event-title">{title}</div>
             </div>
@@ -415,37 +416,33 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
         }}
         .event-item {{ 
             margin-bottom: 20px; 
-            padding-bottom: 20px; 
-            border-bottom: 1px dashed #ced0d4; 
+            padding: 8px 0 8px 16px; 
+            border-left: 4px solid #3b82f6; 
         }}
         .event-item:last-child {{ 
             margin-bottom: 0; 
-            border-bottom: none; 
-            padding-bottom: 0;
         }}
         .event-meta {{ 
-            font-size: 1.05em; 
-            color: #65676b; 
+            display: flex;
+            align-items: center;
+            gap: 8px;
             margin-bottom: 4px; 
         }}
         .event-time {{ 
-            font-weight: bold; 
-            color: #1a1a1a; 
-            font-size: 1.2em; 
+            font-weight: 600; 
+            color: #2563eb; 
+            font-size: 1em; 
             letter-spacing: 0.5px;
         }}
-        .event-separator {{ 
-            color: #bcc0c4; 
-            margin: 0 6px; 
-        }}
         .event-venue {{ 
-            color: #1877f2; 
-            font-weight: bold; 
+            color: #6b7280; 
+            font-size: 0.875rem; 
+            font-weight: normal; 
         }}
         .event-title {{ 
-            font-size: 1.3em; 
-            font-weight: bold; 
-            color: #1a1a1a; 
+            font-size: 1.125rem; 
+            font-weight: 500; 
+            color: #1f2937; 
             line-height: 1.4; 
             margin-top: 4px;
         }}
