@@ -34,6 +34,9 @@
 
 ```
 event_notify/
+├── calendar/              # Next.js カレンダーアプリ（Vercel連携用フロントエンド）
+│   ├── src/app/           #   ページ・レイアウト群 (page.tsx, layout.tsx, etc.)
+│   └── package.json       #   Node.js 依存関係・設定ファイル
 ├── scrapers/              # データ取得モジュール（8会場分）
 │   ├── marinemesse_a.py   #   A館  — CMS API (薄いラッパー)
 │   ├── marinemesse_b.py   #   B館  — CMS API
@@ -45,18 +48,19 @@ event_notify/
 │   ├── best_denki_stadium.py  # ベスト電器スタジアム
 │   └── old/               #   旧スクレイパーのアーカイブ
 ├── scripts/
-│   └── refresh_future_events.py  # オーケストレーター
+│   └── refresh_future_events.py  # Supabase更新オーケストレーター
 ├── utils/
 │   ├── parser.py          # 日付・時刻パーサー (split_and_normalize)
 │   └── marinemesse_api.py # マリンメッセ系4会場 CMS API共通モジュール
 ├── notify/
-│   ├── dispatch.py        # Slack/LINE通知
-│   └── html_export.py     # HTML生成 (GitHub Pages用)
+│   ├── dispatch.py        # 実行ログ監視・Slackへのヘルスチェック通知
+│   ├── html_export.py     # HTML生成 (GitHub Pages用)
+│   └── old/               # 旧通知システムのアーカイブ
 ├── storage/               # 出力JSON (YYYY-MM-DD_{code}.json)
 ├── site/                  # 生成HTML (index.html, manual.html)
 ├── run/
 │   └── dispatch.ps1       # ローカル一括実行 (PowerShell)
-└── .env                   # 環境変数設定
+└── .env                   # バックエンド用 環境変数設定
 ```
 
 ## 🚀 セットアップ
