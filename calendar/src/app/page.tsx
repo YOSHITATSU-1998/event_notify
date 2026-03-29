@@ -42,7 +42,7 @@ export default function Home() {
     const checkScreenSize = () => {
       setIsMobile(window.innerWidth <= 480);
     };
-    
+
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
@@ -53,7 +53,7 @@ export default function Home() {
     const fetchMonthlyData = async () => {
       const year = currentYear;
       const month = currentMonth + 1; // 1-12に変換
-      
+
       // その月の1日から最終日まで
       const firstDay = `${year}-${month.toString().padStart(2, '0')}-01`;
       const lastDay = new Date(year, month, 0).getDate(); // その月の最終日
@@ -97,7 +97,7 @@ export default function Home() {
     const fetchDayEvents = async () => {
       setLoading(true);
       const dateStr = selectedDate.toISOString().split('T')[0];
-      
+
       // デバッグログ追加
       console.log('イベント取得:', {
         selectedDate: selectedDate.toString(),
@@ -128,19 +128,19 @@ export default function Home() {
   const generateCalendar = () => {
     const year = currentYear;
     const month = currentMonth;
-    
+
     console.log('カレンダー生成:', { year, month });
-    
+
     // その月の1日と最終日（UTC時刻で固定して計算）
     const firstDay = new Date(year, month, 1, 12, 0, 0); // 正午で固定
     const lastDay = new Date(year, month + 1, 0, 12, 0, 0); // 正午で固定
-    
+
     // カレンダーの週開始位置と日数
     const startDayOfWeek = firstDay.getDay(); // 0=日曜
     const daysInMonth = lastDay.getDate();
-    
+
     const calendar = [];
-    
+
     // 前月の末尾を埋める
     const prevMonthLastDay = new Date(year, month, 0, 12, 0, 0).getDate();
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
@@ -151,28 +151,28 @@ export default function Home() {
         isCurrentMonth: false
       });
     }
-    
+
     // 当月の日付（デバッグログ追加）
     for (let day = 1; day <= daysInMonth; day++) {
       const dateObj = new Date(year, month, day, 12, 0, 0);
       if (day === 1) {
-        console.log('1日生成:', { 
-          year, 
-          month, 
-          day, 
+        console.log('1日生成:', {
+          year,
+          month,
+          day,
           dateObj,
           isoString: dateObj.toISOString(),
           dateString: dateObj.toISOString().split('T')[0]
         });
       }
-      
+
       calendar.push({
         day,
         date: dateObj,
         isCurrentMonth: true
       });
     }
-    
+
     // 次月の先頭を埋める（6週間分まで）
     const remaining = 42 - calendar.length;
     for (let day = 1; day <= remaining; day++) {
@@ -182,7 +182,7 @@ export default function Home() {
         isCurrentMonth: false
       });
     }
-    
+
     return calendar;
   };
 
@@ -203,12 +203,12 @@ export default function Home() {
   const handlePrevMonth = () => {
     const newDate = new Date(currentYear, currentMonth - 1, 1);
     setCurrentDate(newDate);
-    
+
     // 現在月（ローカル時間基準）かどうかを判定
     const localToday = getLocalToday();
-    const isCurrentMonth = (newDate.getFullYear() === localToday.getFullYear() && 
-                           newDate.getMonth() === localToday.getMonth());
-    
+    const isCurrentMonth = (newDate.getFullYear() === localToday.getFullYear() &&
+      newDate.getMonth() === localToday.getMonth());
+
     if (isCurrentMonth) {
       setSelectedDate(localToday);  // 今月なら今日を選択
     } else {
@@ -219,12 +219,12 @@ export default function Home() {
   const handleNextMonth = () => {
     const newDate = new Date(currentYear, currentMonth + 1, 1);
     setCurrentDate(newDate);
-    
+
     // 現在月（ローカル時間基準）かどうかを判定
     const localToday = getLocalToday();
-    const isCurrentMonth = (newDate.getFullYear() === localToday.getFullYear() && 
-                           newDate.getMonth() === localToday.getMonth());
-    
+    const isCurrentMonth = (newDate.getFullYear() === localToday.getFullYear() &&
+      newDate.getMonth() === localToday.getMonth());
+
     if (isCurrentMonth) {
       setSelectedDate(localToday);  // 今月なら今日を選択
     } else {
@@ -243,8 +243,8 @@ export default function Home() {
 
           {/* 今日のイベントリンク */}
           <div className="text-center mb-8 border-b border-gray-200 pb-6">
-            <a 
-              href="https://yoshitatsu-1998.github.io/event_notify/" 
+            <a
+              href="https://yoshitatsu-1998.github.io/event_notify/"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-block bg-sky-500 hover:bg-sky-600 text-white font-medium px-6 py-3 rounded-lg shadow-2xl transition-colors duration-200 text-lg"
@@ -259,30 +259,31 @@ export default function Home() {
             <div className="flex items-center justify-between mb-6">
               <button
                 onClick={handlePrevMonth}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors text-gray-700 font-medium"
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors text-gray-700 font-medium flex items-center gap-1"
               >
-                ←
+                <span>←</span>
+                <span>{monthNames[(currentMonth + 11) % 12]}</span>
               </button>
-              
+
               <h2 className="text-2xl font-semibold text-gray-800">
                 {currentYear}年{monthNames[currentMonth]}
               </h2>
-              
+
               <button
                 onClick={handleNextMonth}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors text-gray-700 font-medium"
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors text-gray-700 font-medium flex items-center gap-1"
               >
-                →
+                <span>{monthNames[(currentMonth + 1) % 12]}</span>
+                <span>→</span>
               </button>
             </div>
 
             {/* 曜日ヘッダー */}
             <div className="grid grid-cols-7 mb-2">
               {weekDays.map((day, index) => (
-                <div key={day} className={`text-center font-medium py-2 ${
-                  index === 0 ? 'text-red-600' : 
-                  index === 6 ? 'text-blue-600' : 'text-gray-700'
-                }`}>
+                <div key={day} className={`text-center font-medium py-2 ${index === 0 ? 'text-red-600' :
+                    index === 6 ? 'text-blue-600' : 'text-gray-700'
+                  }`}>
                   {day}
                 </div>
               ))}
@@ -335,13 +336,12 @@ export default function Home() {
                     <span className={`text-sm font-medium ${textColor} mb-1`}>
                       {dayInfo.day}
                     </span>
-                    
+
                     {dayInfo.isCurrentMonth && eventCount > 0 && (
-                      <span className={`${isMobile ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1.5'} rounded font-medium ${
-                        eventCount >= 5 ? 'bg-red-100 text-red-800' :
-                        eventCount >= 3 ? 'bg-orange-100 text-orange-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
+                      <span className={`${isMobile ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1.5'} rounded font-medium ${eventCount >= 5 ? 'bg-red-100 text-red-800' :
+                          eventCount >= 3 ? 'bg-orange-100 text-orange-800' :
+                            'bg-green-100 text-green-800'
+                        }`}>
                         {eventCount}件
                       </span>
                     )}
@@ -391,15 +391,15 @@ export default function Home() {
             )}
 
             {/* 意見箱セクション */}
-            <div 
+            <div
               className="mt-8 border-l-4 border-orange-400 p-6 rounded-lg"
               style={{ backgroundColor: '#fff5cd' }}
             >
               <div className="text-center">
                 <h3 className="text-lg font-semibold text-gray-800 mb-2">ご意見・ご要望</h3>
                 <p className="text-gray-600 mb-4">会場追加のご希望や情報漏れのご報告をお待ちしています</p>
-                <a 
-                  href="https://docs.google.com/forms/d/e/1FAIpQLSfX2EtHu3hZ2FgMfUjSOx1YYQqt2BaB3BGniVPF5TMCtgLByw/viewform" 
+                <a
+                  href="https://docs.google.com/forms/d/e/1FAIpQLSfX2EtHu3hZ2FgMfUjSOx1YYQqt2BaB3BGniVPF5TMCtgLByw/viewform"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block text-white font-medium px-6 py-3 rounded-lg transition-colors duration-200"
@@ -423,13 +423,13 @@ export default function Home() {
               <div className="space-y-2 text-sm text-gray-600">
                 {/* PC版（1行） */}
                 <p className="venue-list-desktop">福岡市内主要イベント会場の情報を自動収集・配信しています (Ver.3.4)</p>
-                
+
                 {/* スマホ版（2行） */}
                 <div className="venue-list-mobile">
                   <p>福岡市内主要イベント会場の情報を</p>
                   <p>自動収集・配信しています (Ver.3.4)</p>
                 </div>
-                
+
                 {/* PC版（横並び・リンク付き） */}
                 <div className="venue-list-desktop space-y-1 mt-8">
                   <p className="font-medium">【対応会場】</p>
@@ -445,12 +445,13 @@ export default function Home() {
                     <a href="https://www.avispa.co.jp/game_practice" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">ベスト電器スタジアム</a>
                   </p>
                 </div>
-                
+
                 {/* スマホ版（縦列・リンク付き） */}
                 <div className="venue-list-mobile mt-8">
                   <p className="font-medium mb-2">【対応会場】</p>
                   <ul>
-                    <li><a href="https://www.marinemesse.or.jp/messe/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセA館</a>・<a href="https://www.marinemesse.or.jp/messe-b/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセB館</a></li>
+                    <li><a href="https://www.marinemesse.or.jp/messe/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセA館</a></li>
+                    <li><a href="https://www.marinemesse.or.jp/messe-b/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセB館</a></li>
                     <li><a href="https://www.marinemesse.or.jp/kokusai/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡国際センター</a></li>
                     <li><a href="https://www.marinemesse.or.jp/congress/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡国際会議場</a></li>
                     <li><a href="https://www.f-sunpalace.com/hall/#hallEvent" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡サンパレス</a></li>
@@ -458,11 +459,11 @@ export default function Home() {
                     <li><a href="https://www.avispa.co.jp/game_practice" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">ベスト電器スタジアム</a></li>
                   </ul>
                 </div>
-                
+
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <p className="text-blue-600 font-medium">
-                    <a 
-                      href="https://yoshitatsu-1998.github.io/event_notify/" 
+                    <a
+                      href="https://yoshitatsu-1998.github.io/event_notify/"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="hover:underline inline-flex items-center gap-1"
@@ -474,8 +475,8 @@ export default function Home() {
 
                 {/* 管理者ページリンク */}
                 <div className="mt-2">
-                  <a 
-                    href="/admin" 
+                  <a
+                    href="/admin"
                     className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
                   >
                     管理者ページ
