@@ -147,11 +147,13 @@ def _merge_paypay_counts(counts: dict) -> dict:
     merged.pop("f_event", None)
     return merged
 
-def _build_section(title: str, counts: dict, compare_counts: Optional[dict] = None) -> list:
-    """スクレイプ件数 or DB件数セクションを生成（PayPay合算済み前提）"""
+def _build_section(title: str, counts: dict, venues_list=None, compare_counts: Optional[dict] = None) -> list:
+    """スクレイプ件数 or DB件数セクションを生成"""
+    if venues_list is None:
+        venues_list = VENUES
     lines = [f"\n--- {title} ---"]
     total = 0
-    for code, name in DISPLAY_VENUES:
+    for code, name in venues_list:
         count = counts.get(code, 0)
         total += count
         short_name = _shorten_venue_name(name)
@@ -170,16 +172,14 @@ def build_log_message(today: str, venue_counts: dict, db_counts: Optional[dict] 
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     lines = [f"【実行ログ】{current_time}"]
 
-    # PayPay合算（f + f_event → f に統合）
-    merged_scrape = _merge_paypay_counts(venue_counts)
-    merged_db = _merge_paypay_counts(db_counts) if db_counts is not None else None
+    # スクレイプ件数セクション（全8会場そのまま表示）
+    lines.extend(_build_section("スクレイプ件数", venue_counts, venues_list=VENUES))
 
-    # スクレイプ件数セクション
-    lines.extend(_build_section("スクレイプ件数", merged_scrape))
-
-    # DB件数セクション
-    if merged_db is not None:
-        lines.extend(_build_section("DB件数", merged_db, compare_counts=merged_scrape))
+    # DB件数セクション（PayPay合算、f_event行なし）
+    if db_counts is not None:
+        merged_db = _merge_paypay_counts(db_counts)
+        merged_scrape_for_compare = _merge_paypay_counts(venue_counts)
+        lines.extend(_build_section("DB件数", merged_db, venues_list=DISPLAY_VENUES, compare_counts=merged_scrape_for_compare))
     elif os.getenv("ENABLE_DB_SAVE", "0") != "1":
         lines.append("\n--- DB件数 ---")
         lines.append("N/A（ENABLE_DB_SAVE=0）")
