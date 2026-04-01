@@ -1,16 +1,6 @@
-name: Daily Scraper & Dispatch Ver.3.1.2 - リトライ戦略実装
+name: Daily Scraper & Dispatch Ver.3.4.2
 on:
   workflow_dispatch:
-    inputs:
-      job_type:
-        description: 'Job type to run'
-        required: false
-        default: 'both'
-        type: choice
-        options:
-          - both
-          - pages-only
-          - slack-only
   schedule:
     - cron: '37 15 * * *'   # JST 00:37 - 中途半端な時刻で混雑回避
 
