@@ -25,6 +25,9 @@ VENUES: List[Tuple[str, str]] = [
 CODE_INDEX: Dict[str, int] = {c: i for i, (c, _) in enumerate(VENUES)}
 CODE2NAME: Dict[str, str] = {c: n for c, n in VENUES}
 
+# 表示用: PayPayドーム(野球)とPayPay(イベント)はDB上で同一venue名のため合算表示
+DISPLAY_VENUES: List[Tuple[str, str]] = [(c, n) for c, n in VENUES if c != "f_event"]
+
 # ★ 環境変数から取得
 def get_webhook_urls():
     slack_url = os.getenv("SLACK_WEBHOOK_URL")
@@ -137,11 +140,18 @@ def _format_venue_line(short_name: str, count: int, warn: bool = False) -> str:
         status_icon = "⚠️"
     return f"{formatted_name}: {count:3}件 {status_icon}"
 
+def _merge_paypay_counts(counts: dict) -> dict:
+    """f(野球)とf_event(イベント)を合算してfに統合"""
+    merged = dict(counts)
+    merged["f"] = merged.get("f", 0) + merged.get("f_event", 0)
+    merged.pop("f_event", None)
+    return merged
+
 def _build_section(title: str, counts: dict, compare_counts: Optional[dict] = None) -> list:
-    """スクレイプ件数 or DB件数セクションを生成"""
+    """スクレイプ件数 or DB件数セクションを生成（PayPay合算済み前提）"""
     lines = [f"\n--- {title} ---"]
     total = 0
-    for code, name in VENUES:
+    for code, name in DISPLAY_VENUES:
         count = counts.get(code, 0)
         total += count
         short_name = _shorten_venue_name(name)
@@ -160,12 +170,16 @@ def build_log_message(today: str, venue_counts: dict, db_counts: Optional[dict] 
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     lines = [f"【実行ログ】{current_time}"]
 
+    # PayPay合算（f + f_event → f に統合）
+    merged_scrape = _merge_paypay_counts(venue_counts)
+    merged_db = _merge_paypay_counts(db_counts) if db_counts is not None else None
+
     # スクレイプ件数セクション
-    lines.extend(_build_section("スクレイプ件数", venue_counts))
+    lines.extend(_build_section("スクレイプ件数", merged_scrape))
 
     # DB件数セクション
-    if db_counts is not None:
-        lines.extend(_build_section("DB件数", db_counts, compare_counts=venue_counts))
+    if merged_db is not None:
+        lines.extend(_build_section("DB件数", merged_db, compare_counts=merged_scrape))
     elif os.getenv("ENABLE_DB_SAVE", "0") != "1":
         lines.append("\n--- DB件数 ---")
         lines.append("N/A（ENABLE_DB_SAVE=0）")
