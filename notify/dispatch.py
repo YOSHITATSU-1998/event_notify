@@ -1,8 +1,9 @@
-# notify/dispatch.py Ver.3.3対応版（実行ログ通知専用）
+# notify/dispatch.py Ver.3.4.2対応版（実行ログ通知専用 + DBカウント）
 import os
 import sys
+import unicodedata
 from datetime import datetime, timezone, timedelta
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import requests
 
 # パス解決
@@ -38,6 +39,24 @@ def determine_today() -> str:
         return override
     return datetime.now(JST).strftime("%Y-%m-%d")
 
+def _shorten_venue_name(name: str) -> str:
+    """会場名を省略形に変換"""
+    if "マリンメッセ" in name:
+        return name.replace("マリンメッセ", "")
+    elif "福岡国際センター" in name:
+        return "国際センター"
+    elif "福岡国際会議場" in name:
+        return "国際会議場"
+    elif "福岡サンパレス" in name:
+        return "サンパレス"
+    elif "みずほPayPayドーム（イベント）" in name:
+        return "PayPay(イベ)"
+    elif "みずほPayPayドーム" in name:
+        return "PayPayドーム"
+    elif "ベスト電器スタジアム" in name:
+        return "ベスト電器S"
+    return name
+
 # --- 送信 ---------------------------------------------------------------
 def send_to_slack(text: str, webhook_url: str) -> bool:
     if not webhook_url:
@@ -52,9 +71,52 @@ def send_to_slack(text: str, webhook_url: str) -> bool:
         print(f"[dispatch][ERROR] Slack msg=\"{e}\"")
         return False
 
-# --- メッセージ生成 ------------------------------------------------------
-import unicodedata
+# --- DB件数取得 -----------------------------------------------------------
+def get_db_counts(today: str) -> Optional[dict]:
+    """Supabaseから会場ごとの件数を取得。失敗時はNoneを返す。"""
+    # ENABLE_DB_SAVE=0 の場合はスキップ
+    if os.getenv("ENABLE_DB_SAVE", "0") != "1":
+        print("[dispatch] ENABLE_DB_SAVE=0 -> DB counts skipped")
+        return None
 
+    try:
+        from supabase import create_client
+        from collections import Counter
+
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_KEY")
+
+        if not supabase_url or not supabase_key:
+            print("[dispatch][WARN] Missing SUPABASE credentials -> DB counts skipped")
+            return None
+
+        supabase = create_client(supabase_url, supabase_key)
+
+        result = supabase.table('events')\
+            .select('venue')\
+            .eq('event_type', 'auto')\
+            .gte('date', today)\
+            .execute()
+
+        # venue名→コード変換用逆引き辞書
+        NAME2CODE = {v: k for k, v in CODE2NAME.items()}
+
+        counter = Counter(row['venue'] for row in result.data)
+
+        db_counts = {}
+        for venue_name, count in counter.items():
+            code = NAME2CODE.get(venue_name)
+            if code:
+                db_counts[code] = count
+
+        print(f"[dispatch] DB counts retrieved: {sum(db_counts.values())} total")
+        return db_counts
+
+    except Exception as e:
+        print(f"[dispatch][WARN] Failed to get DB counts: {e}")
+        return None
+
+# --- メッセージ生成 ------------------------------------------------------
 def get_east_asian_width_count(text: str) -> int:
     """全角文字を2、半角文字を1として文字幅を計算する"""
     count = 0
@@ -65,54 +127,63 @@ def get_east_asian_width_count(text: str) -> int:
             count += 1
     return count
 
-def build_log_message(today: str, venue_counts: dict) -> str:
+def _format_venue_line(short_name: str, count: int, warn: bool = False) -> str:
+    """会場1行分の整形"""
+    width = get_east_asian_width_count(short_name)
+    padding = max(0, 16 - width)
+    formatted_name = short_name + " " * padding
+    status_icon = "✅" if count > 0 else "⚠️"
+    if warn:
+        status_icon = "⚠️"
+    return f"{formatted_name}: {count:3}件 {status_icon}"
+
+def _build_section(title: str, counts: dict, compare_counts: Optional[dict] = None) -> list:
+    """スクレイプ件数 or DB件数セクションを生成"""
+    lines = [f"\n--- {title} ---"]
+    total = 0
+    for code, name in VENUES:
+        count = counts.get(code, 0)
+        total += count
+        short_name = _shorten_venue_name(name)
+        # 比較対象がある場合、差異があれば⚠️
+        warn = False
+        if compare_counts is not None:
+            compare_count = compare_counts.get(code, 0)
+            if count != compare_count:
+                warn = True
+        lines.append(_format_venue_line(short_name, count, warn))
+    lines.append(f"合計: {total}件")
+    return lines
+
+def build_log_message(today: str, venue_counts: dict, db_counts: Optional[dict] = None) -> str:
     """件数ログメッセージを生成する純関数"""
     current_time = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
     lines = [f"【実行ログ】{current_time}"]
-    
-    # 整形用フォーマット: 最長の会場名に合わせてパディング
-    # 全角文字と半角文字が混在するため概算の幅合わせ
-    total_count = 0
-    for code, name in VENUES:
-        count = venue_counts.get(code, 0)
-        total_count += count
-        
-        # 0件の場合は⚠️マーク
-        status_icon = "✅" if count > 0 else "⚠️"
-        
-        # 名前を省略して揃える（例：マリンメッセA館 -> A館）
-        short_name = name
-        if "マリンメッセ" in name:
-            short_name = name.replace("マリンメッセ", "")
-        elif "福岡国際センター" in name:
-            short_name = "国際センター"
-        elif "福岡国際会議場" in name:
-            short_name = "国際会議場"
-        elif "福岡サンパレス" in name:
-            short_name = "サンパレス"
-        elif "みずほPayPayドーム（イベント）" in name:
-            short_name = "PayPay(イベ)"
-        elif "みずほPayPayドーム" in name:
-            short_name = "PayPayドーム"
-        elif "ベスト電器スタジアム" in name:
-            short_name = "ベスト電器S"
-            
-        # 16文字分でパディング（全角/半角混合対応）
-        width = get_east_asian_width_count(short_name)
-        padding = max(0, 16 - width)
-        formatted_name = short_name + " " * padding
-        lines.append(f"{formatted_name}: {count:3}件 {status_icon}")
-        
-    lines.append("─────────────")
-    lines.append(f"合計: {total_count}件")
-    
+
+    # スクレイプ件数セクション
+    lines.extend(_build_section("スクレイプ件数", venue_counts))
+
+    # DB件数セクション
+    if db_counts is not None:
+        lines.extend(_build_section("DB件数", db_counts, compare_counts=venue_counts))
+    elif os.getenv("ENABLE_DB_SAVE", "0") != "1":
+        lines.append("\n--- DB件数 ---")
+        lines.append("N/A（ENABLE_DB_SAVE=0）")
+    else:
+        lines.append("\n--- DB件数 ---")
+        lines.append("⚠️ 取得失敗")
+
     return "\n".join(lines)
 
 # --- エントリポイント ------------------------------------------------------
 def send_log(venue_counts: dict) -> None:
     """refresh_future_events.pyから呼び出すエントリポイント"""
     today = determine_today()
-    body = build_log_message(today, venue_counts)
+
+    # DB件数を取得（内部で自己完結）
+    db_counts = get_db_counts(today)
+
+    body = build_log_message(today, venue_counts, db_counts)
     print("[dispatch] preview:\n" + body)
 
     # DRY_RUN チェック
@@ -127,6 +198,4 @@ def send_log(venue_counts: dict) -> None:
     print(f"[dispatch] sent={sent}")
 
 if __name__ == "__main__":
-    # 単体テスト用
-    dummy_counts = {"a": 35, "b": 24, "c": 14, "d": 46, "e": 12, "f": 8, "f_event": 6, "g": 3}
-    send_log(dummy_counts)
+    print("[dispatch] 単体実行は非対応。refresh_future_events.py経由で実行してください。")

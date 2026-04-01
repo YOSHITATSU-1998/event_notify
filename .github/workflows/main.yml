@@ -253,24 +253,6 @@ jobs:
           fi
           echo "📂 Manual events directory ready"
       
-      # ============================================================
-      # ✨ Ver.3.1.2 修正: 統一された環境変数を使用
-      # ============================================================
-      - name: Get Pages URL for notification
-        run: |
-          echo "📱 Setting Pages URL for Slack notification"
-          echo "GITHUB_PAGES_URL=${{ env.FINAL_DEPLOYMENT_URL }}" >> $GITHUB_ENV
-      
-      - name: Dispatch notification (0:37 unified schedule)
-        run: |
-        
-          set -e
-          echo "📢 統一スケジュール通知開始 - $(date)"
-          cd event_notify
-          python -m notify.dispatch
-          echo "✅ 統一スケジュール通知完了"
-        env:
-          GITHUB_PAGES_URL: ${{ env.GITHUB_PAGES_URL }}
       
       # ============================================================
       # 自動コミット（60日間停止防止）
