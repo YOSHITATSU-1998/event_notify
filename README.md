@@ -22,7 +22,7 @@
 | 4 | 福岡国際会議場 | `d` | Studio Design CMS API | `requests` JSON |
 | 5 | 福岡サンパレス | `e` | 公式HP（静的HTML） | `requests` + BS4 |
 | 6 | PayPayドーム（野球） | `f` | Yahoo!スポーツ | `requests` + BS4 |
-| 7 | PayPayドーム（イベント） | `f_event` | 公式HP | Playwright |
+| 7 | PayPayドーム（イベント） | `f_event` | 公式HP | `requests` + BS4 |
 | 8 | ベスト電器スタジアム | `g` | Yahoo!スポーツ | `requests` + BS4 |
 
 > **Note**: 会場1〜4は2026年3月のNuxt.js(Vue.js)リニューアルにより、

@@ -17,7 +17,7 @@ Pythonによる強力なスクレイピング技術、GitHub Actionsによる完
 4. 福岡国際会議場 (CMS API解析)
 5. 福岡サンパレス (静的HTMLスクレイピング)
 6. PayPayドーム [野球] (Yahoo!スポーツ解析)
-7. PayPayドーム [イベント] (Playwright + ヘッドレスブラウザによる動的解析)
+7. PayPayドーム [イベント] (公式Webサイトスクレイピング)
 8. ベスト電器スタジアム (API解析)
 
 ---
@@ -37,7 +37,6 @@ graph TD
     subgraph DataCollection["バックエンド (Python / GitHub Actions)"]
         Scraper_API["APIパーサー\n(requests)"]
         Scraper_HTML["HTMLパーサー\n(BeautifulSoup4)"]
-        Scraper_Dynamic["動的スクレイパー\n(Playwright)"]
         
         Normalizer["データ正規化\n・差分抽出"]
         Dispatch["実行・監視システム通知\n(Slack)"]
@@ -58,12 +57,11 @@ graph TD
     %% データの流れ
     CMS --> Scraper_API
     WebHTML --> Scraper_HTML
-    Yahoo --> Scraper_Dynamic
+    Yahoo --> Scraper_HTML
     Yahoo --> Scraper_API
     
     Scraper_API --> Normalizer
     Scraper_HTML --> Normalizer
-    Scraper_Dynamic --> Normalizer
     
     Normalizer -->|差分更新| Supabase
     Normalizer -->|新着/更新イベント抽出| NotifyLine
@@ -81,7 +79,7 @@ graph TD
 ### 1. データ収集層 (Python Data Pipeline)
 各サイトの構造変更に対する耐障害性を高めるため、サイトごとに独立した取得ロジック（`scrapers/`）を実装。
 - **CMS API直叩き**: レンダリングされたHTMLではなく、裏で動いているヘッドレスCMS（Studio Design等）のJSONレスポンスを直接パースし、軽量・高速にデータ取得。
-- **Playwright 導入**: 複雑な非同期レンダリングが行われるペーシ（PayPayドームのイベントなど）に対し、ヘッドレスブラウザによる完全なDOM解析アプローチを採用。
+- **HTMLスクレイピング設計**: BeautifulSoup4を活用し、DOMツリーが変わりやすい公式HP（PayPayドームイベント、サンパレス等）からも要素の特定を柔軟に行う頑健なパースシステム。
 - **差分抽出ロジック**: 前回実行時のローカルJSONやSupabaseのデータと比較し、**「新規追加」「更新」「中止」** のイベントのみを抽出する独自の正規化エンジン。
 
 ### 2. データ永続化層 (Supabase / PostgreSQL)
@@ -112,5 +110,5 @@ graph TD
 - ライブチケットの自動空き状況チェック機能の統合
 - LINE Notify以上の高度なメッセージプラットフォーム（LINE Messaging API等）への移行対応
 
-**開発期間**: 2024年〜 (現在継続拡張中)
-**テクノロジースタック**: Python 3.10+, Playwright, Supabase, Next.js (TypeScript), Vercel, GitHub Actions
+**開発期間**: 2025年〜 (現在継続拡張中)
+**テクノロジースタック**: Python 3.10+, BeautifulSoup4, Supabase, Next.js (TypeScript), Vercel, GitHub Actions
