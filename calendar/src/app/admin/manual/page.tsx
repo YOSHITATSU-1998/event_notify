@@ -29,12 +29,22 @@ export default function ManualEventPage() {
   const [errorMessage, setErrorMessage] = useState('');
 
   // 認証処理
-  const handleLogin = () => {
-    if (password === '19981006') {
-      setIsAuthenticated(true);
-      setAuthError('');
-    } else {
-      setAuthError('パスワードが間違っています');
+  const handleLogin = async () => {
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsAuthenticated(true);
+        setAuthError('');
+      } else {
+        setAuthError(data.message || 'パスワードが間違っています');
+      }
+    } catch {
+      setAuthError('認証サーバーとの通信に失敗しました');
     }
   };
 

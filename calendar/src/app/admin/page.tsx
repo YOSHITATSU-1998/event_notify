@@ -57,12 +57,21 @@ export default function AdminPage() {
     }
   }, [isAuthenticated]);
 
-  const handleLogin = () => {
-    // Ver.1.8と同じパスワード（GitHub Secretsで管理）
-    if (password === '19981006') {
-      setIsAuthenticated(true);
-    } else {
-      alert('パスワードが正しくありません');
+  const handleLogin = async () => {
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsAuthenticated(true);
+      } else {
+        alert(data.message || 'パスワードが正しくありません');
+      }
+    } catch {
+      alert('認証サーバーとの通信に失敗しました');
     }
   };
 
