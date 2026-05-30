@@ -1,4 +1,4 @@
-﻿# scrapers/best_denki_stadium.py Ver.2.0 + DB投入機能
+# scrapers/best_denki_stadium.py Ver.2.0 + DB投入機能
 import os
 import json
 import time
@@ -143,76 +143,144 @@ def save_to_supabase(events: List[Dict]) -> None:
         # JSON保存は継続（DB失敗は致命的ではない）
 
 # ---- SCRAPING ---------------------------------------------------------------
-def parse_avispa_table(soup: BeautifulSoup) -> List[Dict]:
-    """アビスパ福岡J1リーグテーブルから試合情報を抽出"""
+
+# スクレイピング対象セクションIDとその大会名
+TARGET_SECTIONS = [
+    ("j1league",    "J1リーグ"),
+    ("levaincup",   "ルヴァンカップ"),
+    ("emperorscup", "プレーオフ/天皇杯"),
+]
+
+def parse_section_table(section_elem, section_name: str) -> List[Dict]:
+    """
+    指定セクション要素内のテーブルからベススタ・ホームゲームを抽出する汎用パーサー。
+    列数が 5〜7 列のテーブルに対応（J1:7列、プレーオフ:7列 など）。
+    """
     events = []
-    
-    # J1リーグセクションのテーブルを特定
-    j1_section = soup.find('section', id='j1league')
-    if not j1_section:
-        print("[DEBUG] J1 league section not found")
-        return events
-    
-    # テーブル行を取得
-    rows = j1_section.select('table tbody tr')
-    print(f"[DEBUG] Found {len(rows)} table rows in J1 section")
-    
+    rows = section_elem.select('table tbody tr')
+    print(f"[DEBUG] [{section_name}] Found {len(rows)} rows")
+
     for i, row in enumerate(rows):
         cells = row.find_all('td')
-        if len(cells) < 7:  # 節、日時、対戦、スタジアム、中継、結果
+        # 最低 5 列必要（丸ごとコラムスパンがある場合も考慮）
+        if len(cells) < 5:
             continue
-        
+
         try:
-            # セル内容を取得
-            section = cells[0].get_text(strip=True)
-            date_time = cells[1].get_text(separator=' ', strip=True)
-            opponent = cells[3].get_text(strip=True)  # 対戦相手名
-            stadium_cell = cells[4]
+            # --- 列レイアウトを動的に検出 ---
+            # スタジアム列: "ベススタ" or "べススタ" を含む td を検索
+            stadium_cell = None
+            stadium_idx = -1
+            for idx, cell in enumerate(cells):
+                txt = cell.get_text(strip=True)
+                if 'ベススタ' in txt or 'べススタ' in txt:
+                    stadium_cell = cell
+                    stadium_idx = idx
+                    break
+
+            if stadium_cell is None:
+                continue  # このセクションでベススタ以外の会場はスキップ
+
+            # home/away 判定
+            if 'home' not in stadium_cell.get_text():
+                continue  # アウェイはスキップ
+
+            # --- 日時列を取得（stadium の手前から探す） ---
+            # 日時セルは「月/日(曜日)」パターンを含む td
+            date_time_text = None
+            for cell in cells[:stadium_idx]:
+                txt = cell.get_text(separator=' ', strip=True)
+                if re.search(r'\d{1,2}/\d{1,2}', txt):
+                    date_time_text = txt
+                    break
+
+            if not date_time_text:
+                print(f"[DEBUG] [{section_name}] Row {i+1}: date not found, skip")
+                continue
+
+            # --- 対戦相手列 ---
+            # 対戦相手: スタジアム列の手前 1〜2 列に入っていることが多い
+            opponent = ""
+            for cell in reversed(cells[:stadium_idx]):
+                txt = cell.get_text(strip=True)
+                # エンブレム span のテキストや「FC」「ヴィッセル」等を含む
+                if txt and not re.fullmatch(r'\d+|\d+\.\d+', txt):
+                    # 「節番号」「戦番号」ではないか確認
+                    if not re.fullmatch(r'\d+(回戦|節|戦)?', txt):
+                        opponent = txt
+                        break
+
+            # --- タイトル ---
+            # 節番号
+            round_label = cells[0].get_text(strip=True)
+            title = f"アビスパ福岡 vs {opponent}" if opponent else f"アビスパ福岡 ホームゲーム ({section_name})"
+
+            # 日時クリーニング: 曜日括弧除去
+            date_time_clean = re.sub(r'\([^)]*\)', '', date_time_text).strip()
+
             stadium_text = stadium_cell.get_text(strip=True)
-            
-            print(f"[DEBUG] Row {i+1}: {section} | {date_time} | vs {opponent} | {stadium_text}")
-            
-            # ベスト電器スタジアム（ベススタ）でのホームゲームのみ抽出
-            if ('ベススタ' in stadium_text or 'べススタ' in stadium_text) and 'home' in stadium_cell.get_text():
-                print(f"[DEBUG] Found home game at ベススタ: {date_time} vs {opponent}")
-                
-                # 日時を分解
-                # 例: "9/13(土) 18:00" → "9/13 18:00"
-                date_time_clean = re.sub(r'\([^)]*\)', '', date_time).strip()
-                
-                # アビスパ福岡 vs 対戦相手のタイトル作成
-                title = f"アビスパ福岡 vs {opponent}"
-                
-                events.append({
-                    "datetime": date_time_clean,
-                    "title": title,
-                    "opponent": opponent,
-                    "section": section,
-                    "raw_stadium": stadium_text
-                })
-        
+            print(f"[DEBUG] [{section_name}] Hit: {round_label} | {date_time_clean} | vs {opponent} | {stadium_text}")
+
+            events.append({
+                "datetime": date_time_clean,
+                "title": title,
+                "opponent": opponent,
+                "section": f"{section_name}:{round_label}",
+                "raw_stadium": stadium_text,
+            })
+
         except Exception as e:
-            print(f"[DEBUG] Error parsing row {i+1}: {e}")
+            print(f"[DEBUG] [{section_name}] Error row {i+1}: {e}")
             continue
-    
-    print(f"[DEBUG] Extracted {len(events)} events from table")
+
     return events
 
+
+def parse_avispa_all_sections(soup: BeautifulSoup) -> List[Dict]:
+    """
+    全大会セクション（J1・ルヴァン・プレーオフ/天皇杯）からベススタ・ホームゲームを収集する。
+    """
+    all_events: List[Dict] = []
+
+    for section_id, section_name in TARGET_SECTIONS:
+        section_elem = soup.find('section', id=section_id)
+        if not section_elem:
+            print(f"[DEBUG] Section '{section_id}' not found, skipping")
+            continue
+        found = parse_section_table(section_elem, section_name)
+        all_events.extend(found)
+
+    # emperorscup id は複数存在する場合があるため、find_all でも念のため補足
+    seen_ids = {s_id for s_id, _ in TARGET_SECTIONS}
+    for section_elem in soup.find_all('section'):
+        sid = section_elem.get('id', '')
+        if sid and sid not in seen_ids:
+            # 新規セクションは念のため全取得（プレーオフラウンドなど id 変更があっても対応）
+            found = parse_section_table(section_elem, sid)
+            if found:
+                print(f"[DEBUG] Extra section '{sid}': found {len(found)} home games")
+                all_events.extend(found)
+            seen_ids.add(sid)
+
+    print(f"[DEBUG] Total home games across all sections: {len(all_events)}")
+    return all_events
+
+
 def fetch_raw_events() -> List[Dict]:
-    """アビスパ福岡公式サイトからJ1リーグ試合情報を取得"""
+    """アビスパ福岡公式サイトから全大会の試合情報を取得（全セクション対応版）"""
     try:
         print(f"[DEBUG] Fetching URL: {URL}")
         r = requests.get(URL, headers=HEADERS, timeout=15)
         r.raise_for_status()
         print(f"[DEBUG] HTTP Status: {r.status_code}")
         print(f"[DEBUG] Content length: {len(r.text)} characters")
-        
+
         soup = BeautifulSoup(r.text, "html.parser")
-        
-        # J1リーグテーブル解析
-        events = parse_avispa_table(soup)
-        
-        # フォールバック: より広範囲なテーブル検索
+
+        # 全セクション解析（J1・ルヴァン・プレーオフ/天皇杯）
+        events = parse_avispa_all_sections(soup)
+
+        # フォールバック: 全セクションで0件だった場合のみ広範囲検索
         if not events:
             print("[DEBUG] Trying fallback table parsing")
             for table in soup.find_all('table'):
@@ -220,8 +288,8 @@ def fetch_raw_events() -> List[Dict]:
                 for row in rows:
                     cells = row.find_all(['td', 'th'])
                     row_text = ' '.join([cell.get_text(strip=True) for cell in cells])
-                    if 'ベススタ' in row_text and re.search(r'\d{1,2}/\d{1,2}', row_text):
-                        # 簡易的なデータ抽出
+                    if ('ベススタ' in row_text or 'べススタ' in row_text) and \
+                            re.search(r'\d{1,2}/\d{1,2}', row_text) and 'home' in row_text:
                         date_match = re.search(r'(\d{1,2}/\d{1,2})', row_text)
                         time_match = re.search(r'(\d{1,2}:\d{2})', row_text)
                         if date_match and time_match:
@@ -230,9 +298,9 @@ def fetch_raw_events() -> List[Dict]:
                                 "title": "アビスパ福岡 ホームゲーム",
                                 "raw_text": row_text
                             })
-        
+
         return events
-        
+
     except requests.RequestException as e:
         raise Exception(f"HTTP request failed: {e}")
     except Exception as e:
