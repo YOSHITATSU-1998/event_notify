@@ -293,7 +293,7 @@ export default function Portal() {
         {/* フッター */}
         <div className="border-t border-gray-200 pt-4 mt-6 text-center text-xs text-gray-500 space-y-2">
           <p>福岡市内主要イベント会場の情報を自動収集・配信しています</p>
-          <p>Ver.4.3 (Next.js Portal統合版)</p>
+          <p>Ver.4.3.2 (Next.js Portal統合版)</p>
           <p className="font-semibold text-gray-700 mt-2">
             Developed by YOSHITATSU NAKAHARA
           </p>
