@@ -493,7 +493,7 @@ export default function Home() {
                           href={event.source_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                          className="text-gray-800 hover:text-black hover:underline transition-colors"
                         >
                           {event.title}
                         </a>

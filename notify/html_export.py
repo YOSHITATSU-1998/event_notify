@@ -457,12 +457,12 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
             margin-top: 4px;
         }}
         .event-title a {{
-            color: #2563eb;
+            color: #1f2937;
             text-decoration: none;
         }}
         .event-title a:hover {{
             text-decoration: underline;
-            color: #1d4ed8;
+            color: #000000;
         }}
         .empty-event {{ 
             color: #65676b; 
