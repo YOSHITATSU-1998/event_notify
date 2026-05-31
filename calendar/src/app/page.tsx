@@ -490,7 +490,18 @@ export default function Home() {
                       </span>
                     </div>
                     <h3 className="text-lg font-medium text-gray-800">
-                      {event.title}
+                      {event.source_url ? (
+                        <a
+                          href={event.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        >
+                          {event.title}
+                        </a>
+                      ) : (
+                        event.title
+                      )}
                     </h3>
                     {event.notes && !event.notes.includes('game_status:') && (
                       <p className="text-sm text-gray-600 mt-1">
