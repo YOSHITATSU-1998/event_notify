@@ -282,12 +282,6 @@ def build_clean_cards_standalone(today: str, events: List[Dict[str, Any]], missi
             time_str = time_value if time_value else "（時刻未定）"
             title = ev.get("title", "")
             venue = ev.get("venue", "")
-            source_url = ev.get("source", "")
-            
-            if source_url:
-                title_html = f'<a href="{source_url}" target="_blank" rel="noopener noreferrer">{title}</a>'
-            else:
-                title_html = title
             
             lines.append(f"""
             <div class="event-item">
@@ -295,7 +289,7 @@ def build_clean_cards_standalone(today: str, events: List[Dict[str, Any]], missi
                     <span class="event-time">{time_str}</span>
                     <span class="event-venue">{venue}</span>
                 </div>
-                <div class="event-title">{title_html}</div>
+                <div class="event-title">{title}</div>
             </div>
             """)
             
@@ -451,14 +445,6 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
             color: #1f2937; 
             line-height: 1.4; 
             margin-top: 4px;
-        }}
-        .event-title a {{
-            color: #2563eb;
-            text-decoration: none;
-        }}
-        .event-title a:hover {{
-            text-decoration: underline;
-            color: #1d4ed8;
         }}
         .empty-event {{ 
             color: #65676b; 
