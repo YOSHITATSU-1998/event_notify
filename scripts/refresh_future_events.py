@@ -66,6 +66,10 @@ def collect_scraped_events(today: str):
                         # event_type = 'auto' を明示
                         event['event_type'] = 'auto'
                         
+                        # ★★★ source → source_url のマッピング変換を追加 ★★★
+                        if 'source' in event and 'source_url' not in event:
+                            event['source_url'] = event.pop('source')
+                        
                         # ★★★ hash → data_hash の変換（後方互換性） ★★★
                         if 'hash' in event and 'data_hash' not in event:
                             event['data_hash'] = event.pop('hash')
@@ -164,12 +168,12 @@ def main():
         if result.data:
             deleted = result.data[0].get('deleted_count', 0)
             inserted = result.data[0].get('inserted_count', 0)
-            print(f"✅ [refresh] Transaction success: deleted {deleted}, inserted {inserted}")
+            print(f"[OK] [refresh] Transaction success: deleted {deleted}, inserted {inserted}")
         else:
-            print(f"✅ [refresh] Transaction success: inserted {len(all_events)} events")
+            print(f"[OK] [refresh] Transaction success: inserted {len(all_events)} events")
             
     except Exception as e:
-        print(f"❌ [refresh] Transaction failed: {e}")
+        print(f"[FAIL] [refresh] Transaction failed: {e}")
         print("[refresh] Attempting fallback (no transaction)...")
         
         # フォールバック（トランザクションなし）
@@ -181,14 +185,14 @@ def main():
                 .execute()
             
             deleted_count = len(del_result.data) if del_result.data else 0
-            print(f"🗑️ [refresh] Fallback: deleted {deleted_count} events")
+            print(f"[DELETE] [refresh] Fallback: deleted {deleted_count} events")
             
             # 挿入
             supabase.table('events').insert(all_events).execute()
-            print(f"✅ [refresh] Fallback: inserted {len(all_events)} events")
+            print(f"[OK] [refresh] Fallback: inserted {len(all_events)} events")
             
         except Exception as fe:
-            print(f"❌ [refresh] Fallback failed: {fe}")
+            print(f"[FAIL] [refresh] Fallback failed: {fe}")
             sys.exit(1)
     
     print("[refresh] === Future Events Refresh Complete ===")

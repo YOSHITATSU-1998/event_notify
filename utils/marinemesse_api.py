@@ -160,9 +160,12 @@ def fetch_raw_events(venue_filter_id: str, name: str) -> List[Dict]:
             if not title:
                 continue
 
+            detail_url = _extract_string(fields, FIELD_DETAIL_URL).strip()
+
             all_items.append({
                 "title": title,
                 "datetime_raw": datetime_raw,
+                "detail_url": detail_url,
             })
 
         if len(data) < limit:
@@ -307,6 +310,8 @@ def run_venue_scraper(meta: Dict) -> None:
 
         try:
             parsed = split_and_normalize(dt_text, ev["title"], venue)
+            for p in parsed:
+                p["detail_url"] = ev.get("detail_url")
             normalized.extend(parsed)
         except Exception as e:
             print(f"[{name}][WARN] Parse failed for '{dt_text}': {e}")
@@ -340,7 +345,7 @@ def run_venue_scraper(meta: Dict) -> None:
         out.append({
             "schema_version": schema_version,
             **it,  # date / time / title / venue
-            "source": source_url,
+            "source": it.get("detail_url") or source_url,
             "hash": h,
             "extracted_at": extracted_at,
         })
