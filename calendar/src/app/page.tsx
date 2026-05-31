@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import HolidayJp from '@holiday-jp/holiday_jp';
 
@@ -25,6 +26,14 @@ const getLocalToday = () => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
 };
 
+// 日付オブジェクトから YYYY-MM-DD 文字列をローカル時間基準で取得する関数（タイムゾーンのズレ防止）
+const transDay = (date: Date) => {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 export default function Home() {
   // ローカル時間基準で今日を初期値に設定
   const [currentDate, setCurrentDate] = useState(getLocalToday);
@@ -33,9 +42,65 @@ export default function Home() {
   const [monthlyEvents, setMonthlyEvents] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [shiftDates, setShiftDates] = useState<Record<string, boolean>>({});
+  const [salesData, setSalesData] = useState<Record<string, number | null>>({});
+  const [goalAmount, setGoalAmount] = useState<number>(0);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth(); // 0-11
+
+  // マウント時にLocalStorageからシフト情報と売上情報を取得
+  useEffect(() => {
+    const shifts: Record<string, boolean> = {};
+    const sales: Record<string, number | null> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && /^\d{4}-\d{2}-\d{2}$/.test(key)) {
+        try {
+          const item = JSON.parse(localStorage.getItem(key) || '{}');
+          if (item) {
+            if (item.is_shift === true) {
+              shifts[key] = true;
+            }
+            if (typeof item.sales !== 'undefined') {
+              sales[key] = item.sales;
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    setShiftDates(shifts);
+    setSalesData(sales);
+  }, []);
+
+  // 表示月が切り替わったときに目標金額をリロード
+  useEffect(() => {
+    const monthKey = `${currentYear}-${(currentMonth + 1).toString().padStart(2, '0')}`;
+    const storedGoal = localStorage.getItem(`goal-${monthKey}`);
+    if (storedGoal) {
+      setGoalAmount(parseInt(storedGoal, 10) || 0);
+    } else {
+      setGoalAmount(0);
+    }
+  }, [currentYear, currentMonth]);
+
+  // 表示月の合計売上を算出
+  const getMonthlySalesTotal = () => {
+    let total = 0;
+    const date = new Date(currentYear, currentMonth, 1);
+    while (date.getMonth() === currentMonth) {
+      const dateStr = transDay(date);
+      total += salesData[dateStr] || 0;
+      date.setDate(date.getDate() + 1);
+    }
+    return total;
+  };
+
+  const monthlySalesTotal = getMonthlySalesTotal();
+  const remainingGoal = Math.max(0, goalAmount - monthlySalesTotal);
+
 
   // 画面サイズ検知
   useEffect(() => {
@@ -96,13 +161,13 @@ export default function Home() {
   useEffect(() => {
     const fetchDayEvents = async () => {
       setLoading(true);
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      const dateStr = transDay(selectedDate);
 
       // デバッグログ追加
       console.log('イベント取得:', {
         selectedDate: selectedDate.toString(),
         dateStr,
-        isToday: dateStr === getLocalToday().toISOString().split('T')[0]
+        isToday: dateStr === transDay(getLocalToday())
       });
 
       try {
@@ -162,7 +227,7 @@ export default function Home() {
           day,
           dateObj,
           isoString: dateObj.toISOString(),
-          dateString: dateObj.toISOString().split('T')[0]
+          dateString: transDay(dateObj)
         });
       }
 
@@ -237,9 +302,25 @@ export default function Home() {
       <div className="max-w-4xl mx-auto px-4">
         {/* 全体を1つの白い背景でまとめる */}
         <div className="bg-white rounded-lg shadow-lg p-8">
-          <h1 className="text-3xl font-bold text-center text-gray-800 mb-6 drop-shadow-lg">
+          <h1 className="text-3xl font-bold text-center text-gray-800 mb-4 drop-shadow-lg">
             福岡イベントカレンダー
           </h1>
+
+          {/* 個人管理ツール用ナビゲーション (ヘッダー) */}
+          <div className="flex justify-center gap-4 mb-6">
+            <Link
+              href="/sales"
+              className="flex-1 max-w-[160px] text-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold py-2.5 px-3 rounded-lg border border-emerald-200 text-sm shadow-sm transition-colors"
+            >
+              💰 売上管理 <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1 py-0.2 rounded ml-0.5 font-normal">β</span>
+            </Link>
+            <Link
+              href="/shift"
+              className="flex-1 max-w-[160px] text-center bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-semibold py-2.5 px-3 rounded-lg border border-indigo-200 text-sm shadow-sm transition-colors"
+            >
+              🚕 シフト入力 <span className="text-[10px] bg-indigo-200 text-indigo-900 px-1 py-0.2 rounded ml-0.5 font-normal">β</span>
+            </Link>
+          </div>
 
           {/* 今日のイベントリンク */}
           <div className="text-center mb-8 border-b border-gray-200 pb-6">
@@ -278,6 +359,36 @@ export default function Home() {
               </button>
             </div>
 
+            {/* 目標金額・売上サマリー */}
+            {goalAmount > 0 && (
+              <div className={`text-center mb-6 rounded-lg py-2.5 px-4 max-w-sm mx-auto shadow-sm border ${
+                monthlySalesTotal >= goalAmount
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-orange-50 border-orange-200'
+              }`}>
+                {monthlySalesTotal >= goalAmount ? (
+                  <>
+                    <span className="text-sm font-semibold text-emerald-800">🎉 目標達成！</span>
+                    <span className="text-lg font-black text-emerald-950 block mt-0.5">
+                      おめでとうございます！
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-semibold text-orange-800">🎯 目標まであと：</span>
+                    <span className="text-lg font-bold text-orange-950">
+                      {remainingGoal.toLocaleString()} 円
+                    </span>
+                  </>
+                )}
+                <span className={`text-xs block mt-1 ${
+                  monthlySalesTotal >= goalAmount ? 'text-emerald-700' : 'text-orange-700'
+                }`}>
+                  (目標: {goalAmount.toLocaleString()}円 / 売上: {monthlySalesTotal.toLocaleString()}円)
+                </span>
+              </div>
+            )}
+
             {/* 曜日ヘッダー */}
             <div className="grid grid-cols-7 mb-2">
               {weekDays.map((day, index) => (
@@ -292,7 +403,7 @@ export default function Home() {
             {/* カレンダーグリッド */}
             <div className="grid grid-cols-7 gap-1">
               {calendar.map((dayInfo, index) => {
-                const dateString = dayInfo.date.toISOString().split('T')[0];
+                const dateString = transDay(dayInfo.date);
                 const eventCount = dayInfo.isCurrentMonth ? (monthlyEvents[dateString] || 0) : 0;
                 const isSelected = selectedDate.toDateString() === dayInfo.date.toDateString();
                 const isToday = getLocalToday().toDateString() === dayInfo.date.toDateString();
@@ -328,7 +439,7 @@ export default function Home() {
                     onClick={() => setSelectedDate(dayInfo.date)}
                     className={`
                       min-h-[80px] p-2 border border-gray-200 hover:bg-gray-50 
-                      flex flex-col items-center justify-start rounded
+                      flex flex-col items-center justify-start rounded relative
                       ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''}
                       ${isToday ? 'bg-yellow-50' : ''}
                     `}
@@ -336,6 +447,13 @@ export default function Home() {
                     <span className={`text-sm font-medium ${textColor} mb-1`}>
                       {dayInfo.day}
                     </span>
+
+                    {/* 出勤シフト「🚕」表示 */}
+                    {dayInfo.isCurrentMonth && shiftDates[dateString] && (
+                      <span className="shift-badge-taxi" title="出勤日">
+                        🚕
+                      </span>
+                    )}
 
                     {dayInfo.isCurrentMonth && eventCount > 0 && (
                       <span className={`${isMobile ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1.5'} rounded font-medium ${eventCount >= 5 ? 'bg-red-100 text-red-800' :
@@ -460,6 +578,22 @@ export default function Home() {
                   </ul>
                 </div>
 
+                {/* 個人管理ツール用ナビゲーション (フッター) */}
+                <div className="mt-6 pt-4 border-t border-gray-100 flex justify-center gap-4 max-w-sm mx-auto">
+                  <Link
+                    href="/sales"
+                    className="flex-1 text-center bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg border border-gray-200 text-xs transition-colors shadow-sm"
+                  >
+                    💰 売上管理 β
+                  </Link>
+                  <Link
+                    href="/shift"
+                    className="flex-1 text-center bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg border border-gray-200 text-xs transition-colors shadow-sm"
+                  >
+                    🚕 シフト入力 β
+                  </Link>
+                </div>
+
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <p className="text-blue-600 font-medium">
                     <a
@@ -481,6 +615,14 @@ export default function Home() {
                   >
                     管理者ページ
                   </a>
+                </div>
+
+                {/* 著作権・製作者クレジット */}
+                <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400 space-y-1">
+                  <p className="font-semibold text-gray-600">
+                    Developed by YOSHITATSU NAKAHARA
+                  </p>
+                  <p>© 2026 All Rights Reserved.</p>
                 </div>
               </div>
             </div>

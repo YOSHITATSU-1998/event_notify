@@ -433,3 +433,25 @@ body {
     font-size: 14px;
   }
 }
+
+/* ========================================
+   出勤シフト（🚕）バッジの調整
+   ======================================== */
+.shift-badge-taxi {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 1.25rem; /* PC版：大きさをもう1つ大きくする (デフォルトはtext-base=1rem) */
+  z-index: 10;
+  line-height: 1;
+}
+
+/* スマホ表示（480px以下） */
+@media (max-width: 480px) {
+  .shift-badge-taxi {
+    top: auto !important;     /* top指定をクリア */
+    bottom: 2px !important;   /* 下部に配置して「件」の文字にかぶせる */
+    right: 2px !important;    /* 右端に配置 */
+    font-size: 1rem !important; /* スマホ版：大きさを元のまま維持 */
+  }
+}
