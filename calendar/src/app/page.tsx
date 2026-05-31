@@ -324,14 +324,12 @@ export default function Home() {
 
           {/* 今日のイベントリンク */}
           <div className="text-center mb-8 border-b border-gray-200 pb-6">
-            <a
-              href="https://yoshitatsu-1998.github.io/event_notify/"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/portal"
               className="inline-block bg-sky-500 hover:bg-sky-600 text-white font-medium px-6 py-3 rounded-lg shadow-2xl transition-colors duration-200 text-lg"
             >
               今日のイベントはこちら
-            </a>
+            </Link>
           </div>
 
           {/* カレンダー */}
@@ -607,14 +605,12 @@ export default function Home() {
 
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <p className="text-blue-600 font-medium">
-                    <a
-                      href="https://yoshitatsu-1998.github.io/event_notify/"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <Link
+                      href="/portal"
                       className="hover:underline inline-flex items-center gap-1"
                     >
                       📅 今日のイベント情報はこちら
-                    </a>
+                    </Link>
                   </p>
                 </div>
 
