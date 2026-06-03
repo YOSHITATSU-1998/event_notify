@@ -2,22 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
 import HolidayJp from '@holiday-jp/holiday_jp';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-type Event = {
-  id: number;
-  date: string;
-  time?: string;
-  title: string;
-  venue: string;
-  source_url?: string;
-  notes?: string;
-};
+import { supabase } from '@/lib/supabase';
+import { venueLinks, FEEDBACK_FORM_URL, formatTime } from '@/lib/constants';
+import { Event } from '@/types';
+import EventSection from '@/components/EventSection';
+import FeedbackBox from '@/components/FeedbackBox';
+import VenueList from '@/components/VenueList';
+import AppFooter from '@/components/AppFooter';
 
 // ユーザーローカル時間で今日の日付を取得する関数
 const getLocalToday = () => {
@@ -101,7 +93,6 @@ export default function Home() {
   const monthlySalesTotal = getMonthlySalesTotal();
   const remainingGoal = Math.max(0, goalAmount - monthlySalesTotal);
 
-
   // 画面サイズ検知
   useEffect(() => {
     const checkScreenSize = () => {
@@ -178,6 +169,7 @@ export default function Home() {
           .order('time', { ascending: true });
 
         console.log(`取得イベント数: ${data?.length || 0}件`);
+        if (error) throw error;
         setEvents(data || []);
       } catch (error) {
         console.error('日別データ取得エラー:', error);
@@ -260,10 +252,8 @@ export default function Home() {
 
   const weekDays = ['日', '月', '火', '水', '木', '金', '土'];
 
-  const formatTime = (time?: string) => {
-    if (!time) return '（時刻未定）';
-    return time.substring(0, 5);
-  };
+  // 選択日のタイトル文字列を生成
+  const selectedDateTitle = `${selectedDate.getFullYear()}年${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日（${weekDays[selectedDate.getDay()]}）のイベント`;
 
   const handlePrevMonth = () => {
     const newDate = new Date(currentYear, currentMonth - 1, 1);
@@ -436,7 +426,7 @@ export default function Home() {
                     key={index}
                     onClick={() => setSelectedDate(dayInfo.date)}
                     className={`
-                      min-h-[80px] p-2 border border-gray-200 hover:bg-gray-50 
+                      min-h-[80px] p-2 border border-gray-200 hover:bg-gray-50
                       flex flex-col items-center justify-start rounded relative
                       ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''}
                       ${isToday ? 'bg-yellow-50' : ''}
@@ -469,170 +459,48 @@ export default function Home() {
 
           {/* イベント詳細 */}
           <div className="border-t border-gray-200 pt-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月{selectedDate.getDate()}日（{['日', '月', '火', '水', '木', '金', '土'][selectedDate.getDay()]}）のイベント
-            </h2>
+            <EventSection
+              title={selectedDateTitle}
+              events={events}
+              loading={loading}
+            />
 
-            {loading ? (
-              <p className="text-gray-600">読み込み中...</p>
-            ) : events.length > 0 ? (
-              <div className="space-y-4">
-                {events.map((event) => (
-                  <div key={event.id} className="border-l-4 border-blue-500 pl-4 py-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-blue-600">
-                        {formatTime(event.time)}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {event.venue}
-                      </span>
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-800">
-                      {event.source_url ? (
-                        <a
-                          href={event.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gray-800 hover:text-black hover:underline transition-colors"
-                        >
-                          {event.title}
-                        </a>
-                      ) : (
-                        event.title
-                      )}
-                    </h3>
-                    {event.notes && !event.notes.includes('game_status:') && (
-                      <p className="text-sm text-gray-600 mt-1">
-                        {event.notes}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 text-lg">
-                  イベントはありません
-                </p>
-              </div>
-            )}
+            {/* ご意見・ご要望 */}
+            <FeedbackBox />
 
-            {/* 意見箱セクション */}
-            <div
-              className="mt-8 border-l-4 border-orange-400 p-6 rounded-lg"
-              style={{ backgroundColor: '#fff5cd' }}
-            >
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">ご意見・ご要望</h3>
-                <p className="text-gray-600 mb-4">会場追加のご希望や情報漏れのご報告をお待ちしています</p>
-                <a
-                  href="https://docs.google.com/forms/d/e/1FAIpQLSfX2EtHu3hZ2FgMfUjSOx1YYQqt2BaB3BGniVPF5TMCtgLByw/viewform"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block text-white font-medium px-6 py-3 rounded-lg transition-colors duration-200"
-                  style={{ backgroundColor: '#f39c12' }}
-                  onMouseEnter={(e) => {
-                    const target = e.target as HTMLElement;
-                    target.style.backgroundColor = '#e67e22';
-                  }}
-                  onMouseLeave={(e) => {
-                    const target = e.target as HTMLElement;
-                    target.style.backgroundColor = '#f39c12';
-                  }}
+            {/* 対応会場リスト */}
+            <VenueList />
+
+            {/* 個人管理ツール用ナビゲーション (フッター) */}
+            <div className="mt-6 pt-4 border-t border-gray-100 flex justify-center gap-4 max-w-sm mx-auto">
+              <Link
+                href="/sales"
+                className="flex-1 text-center bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg border border-gray-200 text-xs transition-colors shadow-sm"
+              >
+                💰 売上管理 β
+              </Link>
+              <Link
+                href="/shift"
+                className="flex-1 text-center bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg border border-gray-200 text-xs transition-colors shadow-sm"
+              >
+                🚕 シフト入力 β
+              </Link>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <p className="text-blue-600 font-medium">
+                <Link
+                  href="/portal"
+                  className="hover:underline inline-flex items-center gap-1"
                 >
-                  ご意見・ご要望はこちら
-                </a>
-              </div>
+                  📅 今日のイベント情報はこちら
+                </Link>
+              </p>
             </div>
 
-            {/* フッター */}
-            <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-              <div className="space-y-2 text-sm text-gray-600">
-                {/* PC版（1行） */}
-                <p className="venue-list-desktop">福岡市内主要イベント会場の情報を自動収集・配信しています (Ver.4.3.2)</p>
 
-                {/* スマホ版（2行） */}
-                <div className="venue-list-mobile">
-                  <p>福岡市内主要イベント会場の情報を</p>
-                  <p>自動収集・配信しています (Ver.4.3.2)</p>
-                </div>
-
-                {/* PC版（横並び・リンク付き） */}
-                <div className="venue-list-desktop space-y-1 mt-8">
-                  <p className="font-medium">【対応会場】</p>
-                  <p>
-                    <a href="https://www.marinemesse.or.jp/messe/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセA館</a>・
-                    <a href="https://www.marinemesse.or.jp/messe-b/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセB館</a>・
-                    <a href="https://www.marinemesse.or.jp/kokusai/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡国際センター</a>・
-                    <a href="https://www.marinemesse.or.jp/congress/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡国際会議場</a>
-                  </p>
-                  <p>
-                    <a href="https://www.f-sunpalace.com/hall/#hallEvent" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡サンパレス</a>・
-                    <a href="https://www.softbankhawks.co.jp/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">みずほPayPayドーム</a>・
-                    <a href="https://www.avispa.co.jp/game_practice" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">ベスト電器スタジアム</a>
-                  </p>
-                </div>
-
-                {/* スマホ版（縦列・リンク付き） */}
-                <div className="venue-list-mobile mt-8">
-                  <p className="font-medium mb-2">【対応会場】</p>
-                  <ul>
-                    <li><a href="https://www.marinemesse.or.jp/messe/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセA館</a></li>
-                    <li><a href="https://www.marinemesse.or.jp/messe-b/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">マリンメッセB館</a></li>
-                    <li><a href="https://www.marinemesse.or.jp/kokusai/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡国際センター</a></li>
-                    <li><a href="https://www.marinemesse.or.jp/congress/event/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡国際会議場</a></li>
-                    <li><a href="https://www.f-sunpalace.com/hall/#hallEvent" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">福岡サンパレス</a></li>
-                    <li><a href="https://www.softbankhawks.co.jp/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">みずほPayPayドーム</a></li>
-                    <li><a href="https://www.avispa.co.jp/game_practice" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">ベスト電器スタジアム</a></li>
-                  </ul>
-                </div>
-
-                {/* 個人管理ツール用ナビゲーション (フッター) */}
-                <div className="mt-6 pt-4 border-t border-gray-100 flex justify-center gap-4 max-w-sm mx-auto">
-                  <Link
-                    href="/sales"
-                    className="flex-1 text-center bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg border border-gray-200 text-xs transition-colors shadow-sm"
-                  >
-                    💰 売上管理 β
-                  </Link>
-                  <Link
-                    href="/shift"
-                    className="flex-1 text-center bg-gray-50 hover:bg-gray-100 text-gray-700 font-medium py-2 px-3 rounded-lg border border-gray-200 text-xs transition-colors shadow-sm"
-                  >
-                    🚕 シフト入力 β
-                  </Link>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-gray-100">
-                  <p className="text-blue-600 font-medium">
-                    <Link
-                      href="/portal"
-                      className="hover:underline inline-flex items-center gap-1"
-                    >
-                      📅 今日のイベント情報はこちら
-                    </Link>
-                  </p>
-                </div>
-
-                {/* 管理者ページリンク */}
-                <div className="mt-2">
-                  <a
-                    href="/admin"
-                    className="text-xs text-gray-400 hover:text-gray-600 hover:underline"
-                  >
-                    管理者ページ
-                  </a>
-                </div>
-
-                {/* 著作権・製作者クレジット */}
-                <div className="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400 space-y-1">
-                  <p className="font-semibold text-gray-600">
-                    Developed by YOSHITATSU NAKAHARA
-                  </p>
-                  <p>© 2026 All Rights Reserved.</p>
-                </div>
-              </div>
-            </div>
+            {/* 共通フッター */}
+            <AppFooter />
           </div>
         </div>
       </div>
