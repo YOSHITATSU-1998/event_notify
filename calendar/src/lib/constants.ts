@@ -1,6 +1,6 @@
 // アプリ全体で共有する定数
 
-export const APP_VERSION = 'Ver.4.3.2';
+export const APP_VERSION = 'Ver.4.3.3';
 
 export const APP_DESCRIPTION = '福岡市内主要イベント会場の情報を自動収集・配信しています';
 
