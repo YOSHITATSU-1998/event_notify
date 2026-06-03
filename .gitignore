@@ -29,6 +29,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!calendar/src/lib/
 lib64/
 parts/
 sdist/
