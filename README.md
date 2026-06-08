@@ -320,6 +320,7 @@ CREATE TABLE events (
 | **4.2** | **バグ修正と詳細URL抽出: 一括登録時のURLマッピング漏れによるURL消失バグを修正。マリンメッセのCMS APIから各イベントの公式個別詳細URLを抽出するようスクレイパーを拡張。イベントタイトルの直接リンク化を再適用** |
 | **4.3.2** | **ポータルのNext.js移植とAnalytics導入: 旧ポータル（GitHub Pages）をNext.js上の `/portal` に移植し、旧ポータルからの自動リダイレクトを設定。Vercel Analyticsを導入し、イベントタイトルのリンク色のみを黒（ダークグレー）に微調整。** |
 | **4.3.3** | **コンポーネント化リファクタリング: 共通型定義・Supabaseクライアント・定数を `src/types/` `src/lib/` に一元化。`AppFooter` `EventCard` `EventSection` `FeedbackBox` `VenueList` の5コンポーネントを新設し、カレンダー・ポータル間のデザインと文言を統一。ポータルの不要な「最終更新」「データソース」ラベルを削除、日付表示形式をカレンダーに統一。** |
+| **4.4** | **アンケートポップアップ実装: Vercel Analytics分析（自作自演発覚・Brave挙動調査・実データ補正）を経て、ユーザー実態把握のためのGoogleフォーム誘導ポップアップをポータルに追加。期限付き表示（SURVEY_END_DATE）・sessionStorage/localStorageによるフラグ管理を実装。** |
 
 ## 📄 ライセンス
 
@@ -331,4 +332,4 @@ YOSHITATSU NAKAHARA (ヨッシー) + Antigravity (Gemini 3.5 Flash / Claude 4.6 
 
 ---
 
-**最終更新**: 2026年5月31日 JST
+**最終更新**: 2026年6月8日 JST
