@@ -327,7 +327,7 @@ CREATE TABLE events (
 
 ## 👤 作成者
 
-YOSHITATSU NAKAHARA (ヨッシー) + Antigravity (Gemini 3.5 Flash / Claude 3.5 Sonnet)
+YOSHITATSU NAKAHARA (ヨッシー) + Antigravity (Gemini 3.5 Flash / Claude 4.6 Sonnet)
 
 ---
 
