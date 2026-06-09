@@ -1,6 +1,6 @@
 // アプリ全体で共有する定数
 
-export const APP_VERSION = 'Ver.4.4';
+export const APP_VERSION = 'Ver.4.5';
 
 export const APP_DESCRIPTION = '福岡市内主要イベント会場の情報を自動収集・配信しています';
 
@@ -9,6 +9,9 @@ export const SURVEY_FORM_URL = 'https://forms.gle/TaZrPNDaTFwgB6Qd6';
 export const SURVEY_END_DATE = new Date('2026-06-15T23:59:59+09:00');
 export const SURVEY_SESSION_KEY = 'survey_shown_v1';
 export const SURVEY_NEVER_KEY = 'survey_never_show_v1';
+
+// 障害お知らせバナー関連
+export const NOTICE_END_DATE = new Date('2026-06-10T23:59:59+09:00');
 
 export const FEEDBACK_FORM_URL =
   'https://docs.google.com/forms/d/e/1FAIpQLSfX2EtHu3hZ2FgMfUjSOx1YYQqt2BaB3BGniVPF5TMCtgLByw/viewform';

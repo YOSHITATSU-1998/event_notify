@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { venueLinks, FEEDBACK_FORM_URL } from '@/lib/constants';
+import { venueLinks, FEEDBACK_FORM_URL, NOTICE_END_DATE } from '@/lib/constants';
 import { Event } from '@/types';
 import EventSection from '@/components/EventSection';
 import VenueList from '@/components/VenueList';
@@ -170,6 +170,19 @@ export default function Portal() {
               天気読み込み中...
             </div>
           )
+        )}
+
+        {/* 障害お知らせバナー（6/10まで表示） */}
+        {new Date() <= NOTICE_END_DATE && (
+          <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-lg mb-6 shadow-sm">
+            <h3 className="font-bold text-amber-800 text-sm mb-2">🔔 運営からのお知らせ</h3>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              2026年6月1日〜6月9日の期間、一部の環境においてイベント情報が
+              正常に表示されない不具合が発生しておりました。<br />
+              6月9日（火）に復旧を確認しております。<br />
+              ご利用の皆様にはご不便をおかけし、大変申し訳ございませんでした。
+            </p>
+          </div>
         )}
 
         {/* 本日のイベントコンテンツ */}
