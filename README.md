@@ -1,4 +1,4 @@
-# 福岡イベント自動通知システム Ver.4.0
+# 福岡イベント自動通知システム Ver.4.5.1
 
 福岡市内の主要8会場のイベント情報を自動収集し、Slack/LINEで通知するシステム、およびドライバー個人向けの売上・シフト管理システム。
 
@@ -321,6 +321,8 @@ CREATE TABLE events (
 | **4.3.2** | **ポータルのNext.js移植とAnalytics導入: 旧ポータル（GitHub Pages）をNext.js上の `/portal` に移植し、旧ポータルからの自動リダイレクトを設定。Vercel Analyticsを導入し、イベントタイトルのリンク色のみを黒（ダークグレー）に微調整。** |
 | **4.3.3** | **コンポーネント化リファクタリング: 共通型定義・Supabaseクライアント・定数を `src/types/` `src/lib/` に一元化。`AppFooter` `EventCard` `EventSection` `FeedbackBox` `VenueList` の5コンポーネントを新設し、カレンダー・ポータル間のデザインと文言を統一。ポータルの不要な「最終更新」「データソース」ラベルを削除、日付表示形式をカレンダーに統一。** |
 | **4.4** | **アンケートポップアップ実装: Vercel Analytics分析（自作自演発覚・Brave挙動調査・実データ補正）を経て、ユーザー実態把握のためのGoogleフォーム誘導ポップアップをポータルに追加。期限付き表示（SURVEY_END_DATE）・sessionStorage/localStorageによるフラグ管理を実装。** |
+| **4.5** | **緊急障害対応: SupabaseのRLS（Row Level Security）誤有効化によるデータ非表示障害を復旧、ポータルに期限付き障害お知らせバナーを直書きで追加。** |
+| **4.5.1** | **お知らせ機能の動的管理化: Supabaseに `notices` テーブルを新設し、管理者用お知らせ管理画面（/admin/messages）を作成。お知らせの作成・削除・有効化/無効化の切り替えをコード変更なしで行えるように改修。ポータルのバナーをDB動的取得に変更。** |
 
 ## 📄 ライセンス
 
@@ -332,4 +334,4 @@ YOSHITATSU NAKAHARA (ヨッシー) + Antigravity (Gemini 3.5 Flash / Claude 4.6 
 
 ---
 
-**最終更新**: 2026年6月8日 JST
+**最終更新**: 2026年6月11日 JST

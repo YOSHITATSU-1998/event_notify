@@ -100,6 +100,19 @@ export default function MessagesPage() {
     }
   };
 
+  // 有効/無効トグル
+  const handleToggle = async (id: number, current: boolean) => {
+    const { error } = await supabase
+      .from('notices')
+      .update({ is_active: !current })
+      .eq('id', id);
+    if (error) {
+      alert(`更新失敗: ${error.message}`);
+    } else {
+      fetchNotices();
+    }
+  };
+
   // 認証前
   if (!isAuthenticated) {
     return (
@@ -278,12 +291,24 @@ export default function MessagesPage() {
                           　作成: {new Date(notice.created_at).toLocaleDateString('ja-JP')}
                         </p>
                       </div>
-                      <button
-                        onClick={() => handleDelete(notice.id)}
-                        className="flex-shrink-0 bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        削除
-                      </button>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => handleToggle(notice.id, notice.is_active)}
+                          className={`text-xs px-3 py-1.5 rounded-lg transition-colors font-medium ${
+                            notice.is_active
+                              ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                              : 'bg-green-500 hover:bg-green-600 text-white'
+                          }`}
+                        >
+                          {notice.is_active ? '無効化' : '有効化'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(notice.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
