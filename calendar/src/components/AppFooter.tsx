@@ -13,7 +13,14 @@ export default function AppFooter() {
         Developed by YOSHITATSU NAKAHARA
       </p>
       <p>© 2026 All Rights Reserved.</p>
-      <p className="pt-2">
+      <p className="pt-2 space-x-3">
+        <Link
+          href="/help/guide"
+          className="text-blue-500 hover:text-blue-700 hover:underline font-medium"
+        >
+          📖 ご利用ガイド
+        </Link>
+        <span className="text-gray-300">|</span>
         <Link
           href="/admin"
           className="text-gray-400 hover:text-gray-600 hover:underline"

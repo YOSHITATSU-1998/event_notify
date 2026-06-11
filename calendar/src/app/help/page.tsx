@@ -17,7 +17,13 @@ export default function HelpPage() {
               <span>カレンダー</span>
             </Link>
             <h1 className="text-lg font-bold text-gray-800">データの保存と注意点</h1>
-            <div className="w-16"></div>
+            <Link
+              href="/help/guide"
+              className="text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1 text-sm bg-amber-50 px-3 py-2 rounded-lg"
+            >
+              <span>ガイド</span>
+              <span>→</span>
+            </Link>
           </div>
 
           <div className="space-y-6">
@@ -92,6 +98,24 @@ export default function HelpPage() {
                 <p>
                   万が一に備え、月の終わりなどには<strong>画面のスクリーンショット（写真）を撮るなどして、売上の金額を別途控えておくこと</strong>をお勧めします。
                 </p>
+              </div>
+            </div>
+
+            {/* ガイドへの案内バナー */}
+            <div className="border-t border-gray-100 pt-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                <h3 className="font-bold text-amber-900 text-sm mb-1">
+                  📖 詳しい使い方・動画ガイドはこちら
+                </h3>
+                <p className="text-xs text-amber-800 mb-3 leading-relaxed">
+                  カレンダー・売上管理・シフト連動の具体的な使い方や開発思想を、動画付きで解説しています。
+                </p>
+                <Link
+                  href="/help/guide"
+                  className="inline-block bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2 px-6 rounded-lg transition-colors shadow-sm"
+                >
+                  ご利用ガイドを見る
+                </Link>
               </div>
             </div>
 
