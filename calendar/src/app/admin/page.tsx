@@ -226,7 +226,17 @@ export default function AdminPage() {
 
           {/* ナビゲーションセクション */}
           <div className="text-center pt-6 border-t border-gray-200 space-y-4">
-            {/* 手入力フォームへのボタン（新規追加） */}
+            {/* お知らせ管理 */}
+            <div>
+              <Link
+                href="/admin/messages"
+                className="inline-block bg-amber-500 hover:bg-amber-600 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+              >
+                📢 お知らせ管理
+              </Link>
+            </div>
+
+            {/* 手入力フォームへのボタン */}
             <div>
               <Link
                 href="/admin/manual"

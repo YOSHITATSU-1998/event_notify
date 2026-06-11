@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { venueLinks, FEEDBACK_FORM_URL, NOTICE_END_DATE } from '@/lib/constants';
-import { Event } from '@/types';
+import { venueLinks, FEEDBACK_FORM_URL } from '@/lib/constants';
+import { Event, Notice } from '@/types';
 import EventSection from '@/components/EventSection';
 import VenueList from '@/components/VenueList';
 import FeedbackBox from '@/components/FeedbackBox';
@@ -72,6 +72,7 @@ export default function Portal() {
   const [weather, setWeather] = useState<WeatherInfo | null>(null);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [weatherError, setWeatherError] = useState(false);
+  const [notices, setNotices] = useState<Notice[]>([]);
 
   // マウント時に今日の日付を設定
   useEffect(() => {
@@ -127,6 +128,22 @@ export default function Portal() {
     fetchTodayEvents();
   }, [todayStr]);
 
+  // お知らせ取得
+  useEffect(() => {
+    const fetchNotices = async () => {
+      const today = getJstTodayStr();
+      const { data } = await supabase
+        .from('notices')
+        .select('*')
+        .eq('is_active', true)
+        .lte('start_at', today)
+        .gte('end_at', today)
+        .order('created_at', { ascending: false });
+      if (data) setNotices(data);
+    };
+    fetchNotices();
+  }, []);
+
   // 天気情報の初回取得とタイマー/Visibility設定
   useEffect(() => {
     fetchWeather();
@@ -172,18 +189,15 @@ export default function Portal() {
           )
         )}
 
-        {/* 障害お知らせバナー（6/10まで表示） */}
-        {new Date() <= NOTICE_END_DATE && (
-          <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-lg mb-6 shadow-sm">
-            <h3 className="font-bold text-amber-800 text-sm mb-2">🔔 運営からのお知らせ</h3>
-            <p className="text-xs text-amber-700 leading-relaxed">
-              2026年6月1日〜6月9日の期間、一部の環境においてイベント情報が
-              正常に表示されない不具合が発生しておりました。<br />
-              6月9日（火）に復旧を確認しております。<br />
-              ご利用の皆様にはご不便をおかけし、大変申し訳ございませんでした。
+        {/* お知らせバナー（DBから動的取得） */}
+        {notices.map((notice) => (
+          <div key={notice.id} className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-lg mb-6 shadow-sm">
+            <h3 className="font-bold text-amber-800 text-sm mb-2">{notice.title}</h3>
+            <p className="text-xs text-amber-700 leading-relaxed whitespace-pre-wrap">
+              {notice.body}
             </p>
           </div>
-        )}
+        ))}
 
         {/* 本日のイベントコンテンツ */}
         <EventSection

@@ -9,3 +9,13 @@ export type Event = {
   source_url?: string;
   notes?: string;
 };
+
+export type Notice = {
+  id: number;
+  title: string;
+  body: string;
+  start_at: string; // YYYY-MM-DD
+  end_at: string;   // YYYY-MM-DD
+  is_active: boolean;
+  created_at: string;
+};
