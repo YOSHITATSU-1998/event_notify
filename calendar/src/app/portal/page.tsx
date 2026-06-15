@@ -9,7 +9,6 @@ import EventSection from '@/components/EventSection';
 import VenueList from '@/components/VenueList';
 import FeedbackBox from '@/components/FeedbackBox';
 import AppFooter from '@/components/AppFooter';
-import SurveyPopup from '@/components/SurveyPopup';
 
 type WeatherInfo = {
   icon: string;
@@ -166,8 +165,6 @@ export default function Portal() {
 
   return (
     <div className="min-h-screen bg-gray-100 py-6 px-4">
-      {/* アンケートポップアップ */}
-      <SurveyPopup />
       <div className="max-w-xl mx-auto bg-white rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold text-center text-gray-800 border-b-2 border-blue-500 pb-3 mb-4">
           福岡イベント情報

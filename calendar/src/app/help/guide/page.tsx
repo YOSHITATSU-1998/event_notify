@@ -1,11 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 
 export default function GuidePage() {
-  const [videoError, setVideoError] = useState(false);
-
   return (
     <div className="min-h-screen bg-gray-50 py-6">
       <div className="max-w-xl mx-auto px-4">
@@ -59,27 +56,15 @@ export default function GuidePage() {
                 <span className="text-xl">🎬</span> 動画でわかる！使い方ガイド
               </h2>
               
-              <div className="bg-gray-100 rounded-xl overflow-hidden border border-gray-200 aspect-video flex flex-col items-center justify-center p-4 text-center">
-                {!videoError ? (
-                  <video 
-                    src="/videos/guide.mp4" 
-                    controls 
-                    className="w-full h-full object-cover rounded-lg"
-                    onError={() => setVideoError(true)}
-                  />
-                ) : (
-                  <div className="space-y-3 p-4">
-                    <p className="text-2xl">📽️</p>
-                    <p className="text-sm font-bold text-gray-700">【動画テスト・準備中】</p>
-                    <p className="text-xs text-gray-500 max-w-sm leading-relaxed mx-auto">
-                      ヨッシーさん作成の動画ファイル（mp4等）を
-                      <br />
-                      <code className="bg-gray-200 px-1 py-0.5 rounded text-[10px] font-mono">public/videos/guide.mp4</code>
-                      <br />
-                      に配置すると、ここに動画プレーヤーが表示され、直接再生できるようになります！
-                    </p>
-                  </div>
-                )}
+              <div className="bg-gray-100 rounded-xl overflow-hidden border border-gray-200 aspect-video w-full">
+                <iframe
+                  src="https://www.youtube.com/embed/HKbmpnqUrx8"
+                  title="福岡イベントカレンダー 使い方ガイド"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  className="w-full h-full rounded-xl"
+                ></iframe>
               </div>
             </div>
 
