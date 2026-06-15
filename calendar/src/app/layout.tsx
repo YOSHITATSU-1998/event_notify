@@ -15,7 +15,21 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "福岡イベントカレンダー",
-  description: "福岡市内主要イベント会場の情報を自動収集・配信しています",
+  description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
+  manifest: "/manifest.json",
+  openGraph: {
+    title: "福岡イベントカレンダー",
+    description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
+    url: "https://www.fukuoka-events-calendar.com",
+    siteName: "福岡イベントカレンダー",
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "福岡イベントカレンダー",
+    description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
+  },
 };
 
 export default function RootLayout({
@@ -34,6 +48,25 @@ export default function RootLayout({
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2581133893639149"
           crossOrigin="anonymous"
         ></script>
+        {/* PWA サービスワーカー登録用スクリプト */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(
+                    function(reg) {
+                      console.log('ServiceWorker registered:', reg.scope);
+                    },
+                    function(err) {
+                      console.log('ServiceWorker registration failed:', err);
+                    }
+                  );
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
