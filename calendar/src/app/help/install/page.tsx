@@ -209,13 +209,39 @@ export default function InstallGuidePage() {
 
             {/* PC の表示 */}
             {deviceType === 'pc' && (
-              <div className="text-center py-16 space-y-4">
-                <div className="text-5xl font-black text-blue-600 animate-pulse">
-                  TEST
+              <div className="space-y-6">
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-blue-900 text-xs leading-relaxed text-center">
+                  PC専用アプリ版は現在 **「準備中」** です。スマートフォン（iPhone/Android）からアクセスすると、スマホに直接アプリを保存できます。
                 </div>
-                <p className="text-xs text-gray-400">
-                  （PC用のインストール手順は現在テスト表示モードです。スマホから開くとそれぞれの自動ガイドが開きます。）
-                </p>
+
+                <div className="space-y-4">
+                  <h2 className="font-bold text-gray-900 text-sm flex items-center gap-1.5 border-b border-gray-100 pb-2">
+                    <span className="text-blue-600">💻</span> PCブラウザでアプリ化する方法（オプション）
+                  </h2>
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Google Chrome や Microsoft Edge などの対応ブラウザをお使いの場合、ブラウザの標準機能を使ってデスクトップにアプリとして追加することも可能です。
+                  </p>
+
+                  <div className="space-y-3 text-xs text-gray-700">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold mt-0.5 flex-shrink-0">
+                        1
+                      </div>
+                      <p className="leading-relaxed">
+                        アドレスバー（URL入力欄）の右端にある **「インストールアイコン（パソコンと↓矢印のマーク）」** をクリックします。
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold mt-0.5 flex-shrink-0">
+                        2
+                      </div>
+                      <p className="leading-relaxed">
+                        確認ポップアップが表示されたら **「インストール」** をクリックします。これでデスクトップ等にショートカットが追加され、独立したウィンドウで起動できるようになります。
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
