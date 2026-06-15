@@ -28,6 +28,21 @@ export default function AppFooter() {
           管理者ページ
         </Link>
       </p>
+      <p className="space-x-3 text-[10px] text-gray-400">
+        <Link
+          href="/privacy-policy"
+          className="hover:underline hover:text-gray-600"
+        >
+          プライバシーポリシー
+        </Link>
+        <span className="text-gray-200">|</span>
+        <Link
+          href="/contact"
+          className="hover:underline hover:text-gray-600"
+        >
+          お問い合わせ
+        </Link>
+      </p>
     </div>
   );
 }
