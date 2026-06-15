@@ -34,7 +34,7 @@ export default function GuidePage() {
               <h2 className="font-bold text-blue-900 text-base mb-3 flex items-center gap-1.5">
                 <span className="text-lg">💡</span> なぜこのサイトを作ったのか？
               </h2>
-              <div className="text-sm text-blue-950 leading-relaxed space-y-3">
+              <div className="text-sm text-blue-900 leading-relaxed space-y-3">
                 <p>
                   新人時代、とにかく必死に走り回っていた私ですが、ある日ベテランさんが異常なまでの売上を上げていました。
                   理由を聞くと、<strong>「今日、PayPayドームで1日中大きなイベントがあっていたからだよ」</strong>と。
@@ -77,7 +77,7 @@ export default function GuidePage() {
               {/* ポータル */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-bold text-gray-850 text-sm">
+                  <h3 className="font-bold text-gray-800 text-sm">
                     1. 今日のイベント
                   </h3>
                   <Link
@@ -87,7 +87,7 @@ export default function GuidePage() {
                     ページを開く ↗
                   </Link>
                 </div>
-                <p className="text-xs text-gray-650 leading-relaxed">
+                <p className="text-xs text-gray-600 leading-relaxed">
                   当日のイベント、開演時間、会場周辺のピンポイント天気をまとめて確認できます。その日の営業ルート選びや、渋滞を避けるための運行計画に最適です。
                 </p>
               </div>
@@ -95,7 +95,7 @@ export default function GuidePage() {
               {/* カレンダー */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-bold text-gray-850 text-sm">
+                  <h3 className="font-bold text-gray-800 text-sm">
                     2. 月間カレンダー
                   </h3>
                   <Link
@@ -105,7 +105,7 @@ export default function GuidePage() {
                     カレンダーを開く ↗
                   </Link>
                 </div>
-                <p className="text-xs text-gray-650 leading-relaxed">
+                <p className="text-xs text-gray-600 leading-relaxed">
                   イベントが重なる日は、セルの色が「緑（通常）➡️ 橙（混雑）➡️ 赤（大混雑）」と変化します。狙い目の乗車地や、効率の良い出勤日を計画する目安になります。
                 </p>
               </div>
@@ -113,7 +113,7 @@ export default function GuidePage() {
               {/* シフト連動 */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-bold text-gray-850 text-sm">
+                  <h3 className="font-bold text-gray-800 text-sm">
                     3. シフト入力 ＆ 🚕マーク連動
                   </h3>
                   <Link
@@ -123,7 +123,7 @@ export default function GuidePage() {
                     シフト入力を開く ↗
                   </Link>
                 </div>
-                <p className="text-xs text-gray-650 leading-relaxed">
+                <p className="text-xs text-gray-600 leading-relaxed">
                   「シフト入力」から自分の出勤予定を登録すると、カレンダー上に「🚕」マークが表示されます。イベント開催日と自分の乗務日がパッと視覚的に重なるため、狙い目がひと目でわかります。
                 </p>
               </div>
@@ -131,17 +131,17 @@ export default function GuidePage() {
               {/* 売上管理 */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-bold text-gray-850 text-sm">
+                  <h3 className="font-bold text-gray-800 text-sm">
                     4. 売上・目標管理
                   </h3>
                   <Link
                     href="/sales"
-                    className="text-xs text-emerald-700 hover:text-emerald-950 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg transition-colors border border-emerald-200"
+                    className="text-xs text-emerald-700 hover:text-emerald-900 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg transition-colors border border-emerald-200"
                   >
                     売上管理を開く ↗
                   </Link>
                 </div>
-                <p className="text-xs text-gray-650 leading-relaxed mb-2">
+                <p className="text-xs text-gray-600 leading-relaxed mb-2">
                   「売上管理」画面から日々の売上を記録し、今月の売上目標を入力すると、カレンダー上部に「目標達成まであといくらか」が自動で計算・表示されます。
                 </p>
                 <p className="text-[10px] text-gray-500 border-t border-gray-200 pt-2 leading-relaxed">
