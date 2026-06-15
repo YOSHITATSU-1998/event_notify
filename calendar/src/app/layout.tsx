@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from '@vercel/analytics/react';
-import Script from 'next/script';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,18 +25,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
+      <head>
+        {/* Google AdSense 所有権確認用メタタグ（クローラー検出率100%） */}
+        <meta name="google-adsense-account" content="ca-pub-2581133893639149" />
+        {/* Google AdSense 審査用スクリプト（直書きで静的検出を確実に） */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2581133893639149"
+          crossOrigin="anonymous"
+        ></script>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
         <Analytics />
-        {/* Google AdSense 審査用スクリプト */}
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2581133893639149"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
-        />
       </body>
     </html>
   );
