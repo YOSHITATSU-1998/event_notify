@@ -156,7 +156,7 @@ export default function GuidePage() {
                 💬 不明点・ご要望があれば
               </p>
               <p className="text-base font-black text-blue-700 mt-1 bg-blue-50 inline-block px-4 py-2 rounded-xl border border-blue-100">
-                B勤中原までお気軽に！
+                中原（NAKAHARA）までお気軽に！
               </p>
             </div>
 

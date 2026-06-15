@@ -52,7 +52,7 @@ export default function ContactPage() {
               運営者情報
             </h2>
             <div className="bg-gray-50 rounded-lg p-4 space-y-1 text-xs">
-              <p><strong>運営者名:</strong> B勤 中原（なかはら）</p>
+              <p><strong>運営者名:</strong> 中原（NAKAHARA）</p>
               <p><strong>サイト名:</strong> 福岡イベントカレンダー</p>
               <p><strong>目的:</strong> 福岡のタクシードライバー（特に新人・他社ドライバー）の情報格差をなくし、営業効率を向上させるためのコミュニティツール運営</p>
             </div>
