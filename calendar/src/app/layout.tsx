@@ -14,6 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.fukuoka-events-calendar.com"),
   title: "福岡イベントカレンダー",
   description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
   manifest: "/manifest.json",
@@ -28,11 +29,20 @@ export const metadata: Metadata = {
     siteName: "福岡イベントカレンダー",
     locale: "ja_JP",
     type: "website",
+    images: [
+      {
+        url: "/icon-192.png",
+        width: 192,
+        height: 192,
+        alt: "福岡イベントカレンダー",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "福岡イベントカレンダー",
     description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
+    images: ["/icon-192.png"],
   },
 };
 
