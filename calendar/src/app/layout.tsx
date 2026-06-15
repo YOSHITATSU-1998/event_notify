@@ -17,6 +17,10 @@ export const metadata: Metadata = {
   title: "福岡イベントカレンダー",
   description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
   openGraph: {
     title: "福岡イベントカレンダー",
     description: "福岡市内の主要イベント情報を一瞬で確認できる、タクシードライバー向けイベントカレンダーです。",
