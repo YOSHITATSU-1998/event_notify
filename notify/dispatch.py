@@ -6,9 +6,17 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Tuple, Dict, Optional
 import requests
 
+# Windows環境でのコンソール出力時のUnicodeEncodeError（cp932エラー）を防止
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+
 # パス解決
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
+
 
 # --- 設定 ---------------------------------------------------------------
 JST = timezone(timedelta(hours=9))
@@ -34,6 +42,15 @@ def get_webhook_urls():
     if not slack_url:
         print("[dispatch][WARN] SLACK_WEBHOOK_URL not set")
     return slack_url
+
+def get_line_credentials():
+    line_user_id = os.getenv("LINE_USER_ID")
+    line_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+    if not line_user_id:
+        print("[dispatch][WARN] LINE_USER_ID not set")
+    if not line_token:
+        print("[dispatch][WARN] LINE_CHANNEL_ACCESS_TOKEN not set")
+    return line_user_id, line_token
 
 # --- ユーティリティ ------------------------------------------------------
 def determine_today() -> str:
@@ -73,6 +90,34 @@ def send_to_slack(text: str, webhook_url: str) -> bool:
     except Exception as e:
         print(f"[dispatch][ERROR] Slack msg=\"{e}\"")
         return False
+
+def send_to_line(text: str, line_user_id: str, line_token: str) -> bool:
+    if not line_user_id or not line_token:
+        print("[dispatch][WARN] Missing LINE credentials -> skip LINE")
+        return False
+    try:
+        url = "https://api.line.me/v2/bot/message/push"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {line_token}"
+        }
+        payload = {
+            "to": line_user_id,
+            "messages": [
+                {
+                    "type": "text",
+                    "text": text
+                }
+            ]
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        print(f"[dispatch] LINE status={r.status_code}")
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"[dispatch][ERROR] LINE msg=\"{e}\"")
+        return False
+
 
 # --- DB件数取得 -----------------------------------------------------------
 def get_db_counts(today: str) -> Optional[dict]:
@@ -190,7 +235,7 @@ def build_log_message(today: str, venue_counts: dict, db_counts: Optional[dict] 
     return "\n".join(lines)
 
 # --- エントリポイント ------------------------------------------------------
-def send_log(venue_counts: dict) -> None:
+def send_log(venue_counts: dict, errors: List[str] = None, zero_warnings: List[str] = None) -> None:
     """refresh_future_events.pyから呼び出すエントリポイント"""
     today = determine_today()
 
@@ -207,9 +252,36 @@ def send_log(venue_counts: dict) -> None:
 
     slack_url = get_webhook_urls()
 
-    # 送信実行
+    # 1. Slackにログ送信（正常・異常にかかわらず全体ログを残す）
     sent = send_to_slack(body, slack_url)
-    print(f"[dispatch] sent={sent}")
+    print(f"[dispatch] Slack sent={sent}")
+
+    # 2. 異常検知時のLINEサイレン送信
+    if (errors and len(errors) > 0) or (zero_warnings and len(zero_warnings) > 0):
+        print("[dispatch][ALERT] Critical anomaly detected! Preparing LINE Siren alert...")
+        
+        # サイレンメッセージの組み立て
+        siren_lines = ["🚨🚨🚨【緊急サイレン】🚨🚨🚨\nスクレイパーで異常が起きたぞ！\n"]
+        
+        if errors:
+            siren_lines.append("■ クラッシュ（例外発生）:")
+            for err in errors:
+                siren_lines.append(f"・{err}")
+            siren_lines.append("") # 空行
+            
+        if zero_warnings:
+            siren_lines.append("■ 0件警告（データ未取得）:")
+            for warn in zero_warnings:
+                siren_lines.append(f"・{warn}")
+            siren_lines.append("") # 空行
+            
+        siren_lines.append("※詳細はSlackの【実行ログ】を確認してください。")
+        siren_body = "\n".join(siren_lines)
+        
+        # LINEにプッシュ送信
+        line_user_id, line_token = get_line_credentials()
+        line_sent = send_to_line(siren_body, line_user_id, line_token)
+        print(f"[dispatch] LINE Siren alert sent={line_sent}")
 
 if __name__ == "__main__":
     print("[dispatch] 単体実行は非対応。refresh_future_events.py経由で実行してください。")

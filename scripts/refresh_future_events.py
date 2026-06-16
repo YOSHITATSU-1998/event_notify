@@ -34,10 +34,11 @@ def run_scraper_safe(scraper_module):
     """スクレイパーを安全に実行"""
     try:
         scraper_module.main()
-        return True
+        return True, None
     except Exception as e:
-        print(f"[refresh][WARN] {scraper_module.__name__} failed: {e}")
-        return False
+        err_msg = str(e)
+        print(f"[refresh][WARN] {scraper_module.__name__} failed: {err_msg}")
+        return False, err_msg
 
 def generate_hash(event: dict) -> str:
     """イベントのハッシュを生成（フォールバック用）"""
@@ -114,20 +115,37 @@ def main():
     ]
     
     success_count = 0
+    errors = []
     for scraper in scrapers:
-        if run_scraper_safe(scraper):
+        success, err_msg = run_scraper_safe(scraper)
+        if success:
             success_count += 1
+        else:
+            errors.append(f"{scraper.__name__.split('.')[-1]}: {err_msg}")
     
     print(f"[refresh] Scrapers: {success_count}/{len(scrapers)} succeeded")
     
     # 3. スクレイピング結果と件数を収集
     all_events, venue_counts = collect_scraped_events(today)
     
-    # ★ 4. Slackに件数ログを送信（0件でも送る）
-    # notifyモジュールは実行時に解決（repo_rootを追加しているためOKのはずだが、安全のため関数内でimport）
+    # ★ 3.5 0件警告対象会場（常時イベントがある会場）の判定
+    zero_warnings = []
+    critical_venues = {
+        'a': 'マリンメッセA館',
+        'b': 'マリンメッセB館',
+        'c': '福岡国際センター',
+        'd': '福岡国際会議場',
+        'e': '福岡サンパレス'
+    }
+    for code, name in critical_venues.items():
+        if venue_counts.get(code, 0) == 0:
+            zero_warnings.append(f"{name} ({code})")
+            print(f"[refresh][WARN] Zero events detected for critical venue: {name}")
+
+    # ★ 4. Slack/LINEに件数・異常ログを送信
     try:
         from notify import dispatch
-        dispatch.send_log(venue_counts)
+        dispatch.send_log(venue_counts, errors, zero_warnings)
     except Exception as e:
         print(f"[refresh][WARN] Failed to send dispatch log: {e}")
     
