@@ -1,15 +1,15 @@
 # ============================================================
-# Fukuoka Event Notification System Ver.3.1.2
+# Fukuoka Event Notification System Ver.4.10
 # Local Debug Execution Script
 # 
 # Usage: .\run\dispatch.ps1
-# Flow: Scraping -> DB Save -> HTML Generation -> Slack Notification
+# Flow: Scraping & Dispatch -> HTML Generation
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Fukuoka Event Notification System Ver.3.1.2" -ForegroundColor Cyan
+Write-Host "  Fukuoka Event Notification System Ver.4.10" -ForegroundColor Cyan
 Write-Host "  Local Debug Mode" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
@@ -212,10 +212,10 @@ python -c "import sys; print('  - Python path:', sys.path[:3])" 2>&1 | Write-Hos
 Write-Host ""
 
 # ============================================================
-# STEP 1: Data Refresh (Scraping + DB Save)
+# STEP 1: Data Refresh (Scraping & Dispatch)
 # ============================================================
 Write-Host "============================================================" -ForegroundColor Yellow
-Write-Host "[STEP 1/4] Data Refresh (Scraping + DB Save)" -ForegroundColor Yellow
+Write-Host "[STEP 1/3] Data Refresh (Scraping & Dispatch)" -ForegroundColor Yellow
 Write-Host "============================================================" -ForegroundColor Yellow
 Write-Host ""
 
@@ -240,7 +240,7 @@ Write-Host ""
 # ============================================================
 # STEP 2: Prepare site Directory
 # ============================================================
-Write-Host "[STEP 2/4] Preparing output directory..." -ForegroundColor Cyan
+Write-Host "[STEP 2/3] Preparing output directory..." -ForegroundColor Cyan
 
 if (-not (Test-Path "site")) {
     New-Item -ItemType Directory -Path "site" | Out-Null
@@ -254,7 +254,7 @@ Write-Host ""
 # STEP 3: HTML Generation
 # ============================================================
 Write-Host "============================================================" -ForegroundColor Yellow
-Write-Host "[STEP 3/4] HTML Generation (index.html + manual.html)" -ForegroundColor Yellow
+Write-Host "[STEP 3/3] HTML Generation (index.html + manual.html)" -ForegroundColor Yellow
 Write-Host "============================================================" -ForegroundColor Yellow
 Write-Host ""
 
@@ -295,35 +295,9 @@ if (Test-Path "site/manual.html") {
 Write-Host ""
 
 # ============================================================
-# STEP 4: Slack Notification
-# ============================================================
-Write-Host "============================================================" -ForegroundColor Yellow
-Write-Host "[STEP 4/4] Slack Notification" -ForegroundColor Yellow
-Write-Host "============================================================" -ForegroundColor Yellow
-Write-Host ""
-
-$start_time_3 = Get-Date
-Write-Host "Start time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-Write-Host ""
-
-python -m notify.dispatch
-if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "[ERROR] Slack notification failed (exit code: $LASTEXITCODE)" -ForegroundColor Red
-    exit 1
-}
-
-$end_time_3 = Get-Date
-$duration_3 = ($end_time_3 - $start_time_3).TotalSeconds
-
-Write-Host ""
-Write-Host "[OK] Slack notification completed (Duration: $([Math]::Round($duration_3, 2))s)" -ForegroundColor Green
-Write-Host ""
-
-# ============================================================
 # Execution Summary
 # ============================================================
-$total_duration = ($end_time_3 - $start_time_1).TotalSeconds
+$total_duration = ($end_time_2 - $start_time_1).TotalSeconds
 
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "All processes completed - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
@@ -334,7 +308,6 @@ Write-Host "Execution Summary:" -ForegroundColor Cyan
 Write-Host "  [OK] STEP 1: Data Refresh ($([Math]::Round($duration_1, 2))s)" -ForegroundColor Gray
 Write-Host "  [OK] STEP 2: Directory Preparation" -ForegroundColor Gray
 Write-Host "  [OK] STEP 3: HTML Generation ($([Math]::Round($duration_2, 2))s)" -ForegroundColor Gray
-Write-Host "  [OK] STEP 4: Slack Notification ($([Math]::Round($duration_3, 2))s)" -ForegroundColor Gray
 Write-Host "  Total Duration: $([Math]::Round($total_duration, 2))s" -ForegroundColor Yellow
 Write-Host ""
 
