@@ -357,14 +357,14 @@ export default function Home() {
                 {monthlySalesTotal >= goalAmount ? (
                   <>
                     <span className="text-sm font-semibold text-emerald-800">🎉 目標達成！</span>
-                    <span className="text-lg font-black text-emerald-950 block mt-0.5">
+                    <span className="text-lg font-black text-emerald-900 block mt-0.5">
                       おめでとうございます！
                     </span>
                   </>
                 ) : (
                   <>
                     <span className="text-sm font-semibold text-orange-800">🎯 目標まであと：</span>
-                    <span className="text-lg font-bold text-orange-950">
+                    <span className="text-lg font-bold text-orange-900">
                       {remainingGoal.toLocaleString()} 円
                     </span>
                   </>

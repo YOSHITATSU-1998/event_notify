@@ -234,6 +234,18 @@ export default function Portal() {
         {/* ご意見・ご要望 */}
         <FeedbackBox />
 
+        {/* ブログコラムリンク */}
+        <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg text-center mb-6 shadow-sm">
+          <h3 className="font-bold text-blue-800 text-sm mb-1">✍️ 運営ドライバーのぼちぼち日記</h3>
+          <p className="text-xs text-blue-700 mb-3">福岡でタクシーを走りながら、アプリ開発や日常の出来事をのほほんと綴ります</p>
+          <Link
+            href="/blog"
+            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm py-2 px-6 rounded transition-colors shadow-sm"
+          >
+            日記一覧を読む
+          </Link>
+        </div>
+
         {/* 共通フッター */}
         <AppFooter />
       </div>

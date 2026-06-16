@@ -268,7 +268,7 @@ export default function SalesPage() {
             {goalAmount > 0 && totalSales >= goalAmount ? (
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center flex flex-col justify-center items-center">
                 <p className="text-xs text-emerald-800 font-medium">目標状況</p>
-                <p className="text-base font-bold text-emerald-950 mt-1">
+                <p className="text-base font-bold text-emerald-900 mt-1">
                   目標達成！🎉
                 </p>
               </div>

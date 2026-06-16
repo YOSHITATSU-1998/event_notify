@@ -101,7 +101,7 @@ export default function InstallGuidePage() {
                         1
                       </div>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        画面下部にある **「共有アイコン（四角から上矢印のマーク）」** をタップします。
+                        画面下部にある <strong className="font-bold">「共有アイコン（四角から上矢印のマーク）」</strong> をタップします。
                         <br />
                         <span className="text-[10px] text-gray-400">※ブラウザのメニューバーが隠れている場合は、画面下部を軽くタップすると表示されます。</span>
                       </p>
@@ -112,7 +112,7 @@ export default function InstallGuidePage() {
                         2
                       </div>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        表示されたメニューを下にスクロールし、**「ホーム画面に追加」** をタップします。
+                        表示されたメニューを下にスクロールし、<strong className="font-bold">「ホーム画面に追加」</strong> をタップします。
                       </p>
                     </div>
 
@@ -121,7 +121,7 @@ export default function InstallGuidePage() {
                         3
                       </div>
                       <p className="text-xs text-gray-700 leading-relaxed">
-                        右上の **「追加」** をタップすると、ホーム画面にアイコンが作成されます。次回からはそのアイコンから一瞬で開けます。
+                        右上の <strong className="font-bold">「追加」</strong> をタップすると、ホーム画面にアイコンが作成されます。次回からはそのアイコンから一瞬で開けます。
                       </p>
                     </div>
                   </div>
@@ -181,7 +181,7 @@ export default function InstallGuidePage() {
                         1
                       </div>
                       <p className="leading-relaxed">
-                        Chromeブラウザの画面右上にある **「︙（メニューアイコン）」** をタップします。
+                        Chromeブラウザの画面右上にある <strong className="font-bold">「︙（メニューアイコン）」</strong> をタップします。
                       </p>
                     </div>
 
@@ -190,7 +190,7 @@ export default function InstallGuidePage() {
                         2
                       </div>
                       <p className="leading-relaxed">
-                        メニュー内の **「ホーム画面に追加」** （または「アプリをインストール」）をタップします。
+                        メニュー内の <strong className="font-bold">「ホーム画面に追加」</strong> （または「アプリをインストール」）をタップします。
                       </p>
                     </div>
 
@@ -199,7 +199,7 @@ export default function InstallGuidePage() {
                         3
                       </div>
                       <p className="leading-relaxed">
-                        確認画面で **「追加（インストール）」** を選ぶと、ホーム画面にアイコンが即座に配置されます。
+                        確認画面で <strong className="font-bold">「追加（インストール）」</strong> を選ぶと、ホーム画面にアイコンが即座に配置されます。
                       </p>
                     </div>
                   </div>
@@ -211,7 +211,7 @@ export default function InstallGuidePage() {
             {deviceType === 'pc' && (
               <div className="space-y-6">
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-blue-900 text-xs leading-relaxed text-center">
-                  PC専用アプリ版は現在 **「準備中」** です。スマートフォン（iPhone/Android）からアクセスすると、スマホに直接アプリを保存できます。
+                  PC専用アプリ版は現在 <strong className="font-bold">「準備中」</strong> です。スマートフォン（iPhone/Android）からアクセスすると、スマホに直接アプリを保存できます。
                 </div>
 
                 <div className="space-y-4">
@@ -228,7 +228,7 @@ export default function InstallGuidePage() {
                         1
                       </div>
                       <p className="leading-relaxed">
-                        アドレスバー（URL入力欄）の右端にある **「インストールアイコン（パソコンと↓矢印のマーク）」** をクリックします。
+                        アドレスバー（URL入力欄）の右端にある <strong className="font-bold">「インストールアイコン（パソコンと↓矢印のマーク）」</strong> をクリックします。
                       </p>
                     </div>
 
@@ -237,7 +237,7 @@ export default function InstallGuidePage() {
                         2
                       </div>
                       <p className="leading-relaxed">
-                        確認ポップアップが表示されたら **「インストール」** をクリックします。これでデスクトップ等にショートカットが追加され、独立したウィンドウで起動できるようになります。
+                        確認ポップアップが表示されたら <strong className="font-bold">「インストール」</strong> をクリックします。これでデスクトップ等にショートカットが追加され、独立したウィンドウで起動できるようになります。
                       </p>
                     </div>
                   </div>
