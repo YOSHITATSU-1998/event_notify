@@ -226,6 +226,18 @@ export default function AdminPage() {
 
           {/* ナビゲーションセクション */}
           <div className="text-center pt-6 border-t border-gray-200 space-y-4">
+            {/* 日記を書く (microCMS) */}
+            <div>
+              <a
+                href="https://fukuoka-events-blog.microcms.io/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+              >
+                ✍️ 日記を書く (microCMS)
+              </a>
+            </div>
+
             {/* お知らせ管理 */}
             <div>
               <Link
