@@ -16,6 +16,8 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       MANUAL_PASSWORD: ${{ secrets.MANUAL_PASSWORD }}
       ENABLE_DB_SAVE: "1"
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
