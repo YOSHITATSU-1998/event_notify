@@ -23,6 +23,7 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       GITHUB_PAGES: "true"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     
     steps:
       - uses: actions/checkout@v4
@@ -123,7 +124,7 @@ jobs:
         id: deployment_1
         uses: actions/deploy-pages@v4
         with:
-          timeout: 900000  # 15分（ミリ秒単位）
+          timeout: 600000  # 10分（ミリ秒単位 - GitHub Actions上限）
         continue-on-error: true
       
       - name: Wait before 2nd attempt
@@ -138,7 +139,7 @@ jobs:
         id: deployment_2
         uses: actions/deploy-pages@v4
         with:
-          timeout: 900000  # 15分
+          timeout: 600000  # 10分
         continue-on-error: true
       
       - name: Wait before 3rd attempt
@@ -153,7 +154,7 @@ jobs:
         id: deployment_3
         uses: actions/deploy-pages@v4
         with:
-          timeout: 1200000  # 20分（最終試行は余裕を持たせる）
+          timeout: 600000  # 10分
       
       - name: Verify deployment success
         run: |
