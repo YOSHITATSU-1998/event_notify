@@ -22,6 +22,13 @@ export default function AppFooter() {
         </Link>
         <span className="text-gray-300">|</span>
         <Link
+          href="/business"
+          className="text-emerald-600 hover:text-emerald-800 hover:underline font-medium"
+        >
+          🚖 事業者様へ
+        </Link>
+        <span className="text-gray-300">|</span>
+        <Link
           href="/admin"
           className="text-gray-400 hover:text-gray-600 hover:underline"
         >

@@ -341,7 +341,7 @@ def create_html_content(today: str, event_message: str, venue_list: str, data_so
     <meta charset="utf-8">
     <script>
         // Ver.4.3.1: 新ポータルサイト（Vercel）への自動リダイレクト
-        window.location.replace("https://fukuoka-events-calendar.vercel.app/portal");
+        window.location.replace("https://fukuoka-events-calendar.com/portal");
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">

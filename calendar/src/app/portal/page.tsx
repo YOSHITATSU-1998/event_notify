@@ -234,6 +234,18 @@ export default function Portal() {
         {/* ご意見・ご要望 */}
         <FeedbackBox />
 
+        {/* 事業者様向け案内 */}
+        <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg text-center mb-6 shadow-sm">
+          <h3 className="font-bold text-slate-800 text-sm mb-1">🚖 運行管理者・タクシー事業者の皆様へ</h3>
+          <p className="text-xs text-slate-600 mb-3">営業所の点呼場や休憩室に掲示できる「A4案内チラシ」を印刷できます</p>
+          <Link
+            href="/business"
+            className="inline-block bg-slate-600 hover:bg-slate-700 text-white font-bold text-sm py-2 px-6 rounded transition-colors shadow-sm"
+          >
+            掲示用チラシの印刷はこちら
+          </Link>
+        </div>
+
         {/* ブログコラムリンク */}
         <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg text-center mb-6 shadow-sm">
           <h3 className="font-bold text-blue-800 text-sm mb-1">✍️ 運営ドライバーのぼちぼち日記</h3>
