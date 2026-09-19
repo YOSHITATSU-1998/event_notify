@@ -144,130 +144,8 @@ def save_to_supabase(events: List[Dict]) -> None:
 
 # ---- SCRAPING ---------------------------------------------------------------
 
-# スクレイピング対象セクションIDとその大会名
-TARGET_SECTIONS = [
-    ("j1league",    "J1リーグ"),
-    ("levaincup",   "ルヴァンカップ"),
-    ("emperorscup", "プレーオフ/天皇杯"),
-]
-
-def parse_section_table(section_elem, section_name: str) -> List[Dict]:
-    """
-    指定セクション要素内のテーブルからベススタ・ホームゲームを抽出する汎用パーサー。
-    列数が 5〜7 列のテーブルに対応（J1:7列、プレーオフ:7列 など）。
-    """
-    events = []
-    rows = section_elem.select('table tbody tr')
-    print(f"[DEBUG] [{section_name}] Found {len(rows)} rows")
-
-    for i, row in enumerate(rows):
-        cells = row.find_all('td')
-        # 最低 5 列必要（丸ごとコラムスパンがある場合も考慮）
-        if len(cells) < 5:
-            continue
-
-        try:
-            # --- 列レイアウトを動的に検出 ---
-            # スタジアム列: "ベススタ" or "べススタ" を含む td を検索
-            stadium_cell = None
-            stadium_idx = -1
-            for idx, cell in enumerate(cells):
-                txt = cell.get_text(strip=True)
-                if 'ベススタ' in txt or 'べススタ' in txt:
-                    stadium_cell = cell
-                    stadium_idx = idx
-                    break
-
-            if stadium_cell is None:
-                continue  # このセクションでベススタ以外の会場はスキップ
-
-            # home/away 判定
-            if 'home' not in stadium_cell.get_text():
-                continue  # アウェイはスキップ
-
-            # --- 日時列を取得（stadium の手前から探す） ---
-            # 日時セルは「月/日(曜日)」パターンを含む td
-            date_time_text = None
-            for cell in cells[:stadium_idx]:
-                txt = cell.get_text(separator=' ', strip=True)
-                if re.search(r'\d{1,2}/\d{1,2}', txt):
-                    date_time_text = txt
-                    break
-
-            if not date_time_text:
-                print(f"[DEBUG] [{section_name}] Row {i+1}: date not found, skip")
-                continue
-
-            # --- 対戦相手列 ---
-            # 対戦相手: スタジアム列の手前 1〜2 列に入っていることが多い
-            opponent = ""
-            for cell in reversed(cells[:stadium_idx]):
-                txt = cell.get_text(strip=True)
-                # エンブレム span のテキストや「FC」「ヴィッセル」等を含む
-                if txt and not re.fullmatch(r'\d+|\d+\.\d+', txt):
-                    # 「節番号」「戦番号」ではないか確認
-                    if not re.fullmatch(r'\d+(回戦|節|戦)?', txt):
-                        opponent = txt
-                        break
-
-            # --- タイトル ---
-            # 節番号
-            round_label = cells[0].get_text(strip=True)
-            title = f"アビスパ福岡 vs {opponent}" if opponent else f"アビスパ福岡 ホームゲーム ({section_name})"
-
-            # 日時クリーニング: 曜日括弧除去
-            date_time_clean = re.sub(r'\([^)]*\)', '', date_time_text).strip()
-
-            stadium_text = stadium_cell.get_text(strip=True)
-            print(f"[DEBUG] [{section_name}] Hit: {round_label} | {date_time_clean} | vs {opponent} | {stadium_text}")
-
-            events.append({
-                "datetime": date_time_clean,
-                "title": title,
-                "opponent": opponent,
-                "section": f"{section_name}:{round_label}",
-                "raw_stadium": stadium_text,
-            })
-
-        except Exception as e:
-            print(f"[DEBUG] [{section_name}] Error row {i+1}: {e}")
-            continue
-
-    return events
-
-
-def parse_avispa_all_sections(soup: BeautifulSoup) -> List[Dict]:
-    """
-    全大会セクション（J1・ルヴァン・プレーオフ/天皇杯）からベススタ・ホームゲームを収集する。
-    """
-    all_events: List[Dict] = []
-
-    for section_id, section_name in TARGET_SECTIONS:
-        section_elem = soup.find('section', id=section_id)
-        if not section_elem:
-            print(f"[DEBUG] Section '{section_id}' not found, skipping")
-            continue
-        found = parse_section_table(section_elem, section_name)
-        all_events.extend(found)
-
-    # emperorscup id は複数存在する場合があるため、find_all でも念のため補足
-    seen_ids = {s_id for s_id, _ in TARGET_SECTIONS}
-    for section_elem in soup.find_all('section'):
-        sid = section_elem.get('id', '')
-        if sid and sid not in seen_ids:
-            # 新規セクションは念のため全取得（プレーオフラウンドなど id 変更があっても対応）
-            found = parse_section_table(section_elem, sid)
-            if found:
-                print(f"[DEBUG] Extra section '{sid}': found {len(found)} home games")
-                all_events.extend(found)
-            seen_ids.add(sid)
-
-    print(f"[DEBUG] Total home games across all sections: {len(all_events)}")
-    return all_events
-
-
 def fetch_raw_events() -> List[Dict]:
-    """アビスパ福岡公式サイトから全大会の試合情報を取得（全セクション対応版）"""
+    """アビスパ福岡公式サイトから全試合情報を取得（新カード構造 div.fixture-row 対応版）"""
     try:
         print(f"[DEBUG] Fetching URL: {URL}")
         r = requests.get(URL, headers=HEADERS, timeout=15)
@@ -276,11 +154,64 @@ def fetch_raw_events() -> List[Dict]:
         print(f"[DEBUG] Content length: {len(r.text)} characters")
 
         soup = BeautifulSoup(r.text, "html.parser")
+        events = []
 
-        # 全セクション解析（J1・ルヴァン・プレーオフ/天皇杯）
-        events = parse_avispa_all_sections(soup)
+        # 新UI: <div class="fixture-row"> からベスト電器スタジアムのHOMEゲームを抽出
+        fixture_rows = soup.select("div.fixture-row")
+        print(f"[DEBUG] Found {len(fixture_rows)} fixture-rows")
 
-        # フォールバック: 全セクションで0件だった場合のみ広範囲検索
+        for i, row in enumerate(fixture_rows):
+            stadium_elem = row.select_one("span.fixture-stadium")
+            stadium_text = stadium_elem.get_text(strip=True) if stadium_elem else ""
+
+            # スタジアム名判定: 「ベスト電器」「ベススタ」「べススタ」
+            if not ("ベスト電器" in stadium_text or "ベススタ" in stadium_text or "べススタ" in stadium_text):
+                continue
+
+            badge_elem = row.select_one("span.fixture-badge")
+            badge_text = badge_elem.get_text(strip=True) if badge_elem else ""
+
+            # HOMEゲームのみ抽出
+            if "HOME" not in badge_text.upper():
+                continue
+
+            # 大会名
+            tour_elem = row.select_one("div.fixture-tournament")
+            tour_sp = tour_elem.select_one("span.pc") if tour_elem else None
+            tour_text = tour_sp.get_text(strip=True) if tour_sp else (tour_elem.get_text(strip=True) if tour_elem else "")
+
+            # 日付
+            date_elem = row.select_one("span.fixture-num")
+            date_str = date_elem.get_text(strip=True) if date_elem else ""
+
+            # キックオフ時間
+            time_elem = row.select_one("span.fixture-num-time")
+            time_str = time_elem.get_text(strip=True) if time_elem else ""
+
+            # 対戦相手
+            opp_elem = row.select_one("span.fixture-opponent-name")
+            opp_text = opp_elem.get_text(strip=True) if opp_elem else ""
+
+            if not date_str:
+                continue
+
+            # タイトル構築
+            title = f"アビスパ福岡 vs {opp_text}" if opp_text else "アビスパ福岡 ホームゲーム"
+
+            # 日時文字列（parser.py が受け取れる形式: "8/8 19:00"）
+            datetime_clean = f"{date_str} {time_str}".strip()
+
+            print(f"[DEBUG] Hit: {tour_text} | {datetime_clean} | vs {opp_text} | {stadium_text}")
+
+            events.append({
+                "datetime": datetime_clean,
+                "title": title,
+                "opponent": opp_text,
+                "section": tour_text,
+                "raw_stadium": stadium_text,
+            })
+
+        # フォールバック: fixture-row で0件だった場合、旧テーブル構造も念のため検索
         if not events:
             print("[DEBUG] Trying fallback table parsing")
             for table in soup.find_all('table'):
@@ -288,13 +219,14 @@ def fetch_raw_events() -> List[Dict]:
                 for row in rows:
                     cells = row.find_all(['td', 'th'])
                     row_text = ' '.join([cell.get_text(strip=True) for cell in cells])
-                    if ('ベススタ' in row_text or 'べススタ' in row_text) and \
-                            re.search(r'\d{1,2}/\d{1,2}', row_text) and 'home' in row_text:
+                    if ('ベススタ' in row_text or 'べススタ' in row_text or 'ベスト電器' in row_text) and \
+                            re.search(r'\d{1,2}/\d{1,2}', row_text) and 'home' in row_text.lower():
                         date_match = re.search(r'(\d{1,2}/\d{1,2})', row_text)
                         time_match = re.search(r'(\d{1,2}:\d{2})', row_text)
-                        if date_match and time_match:
+                        if date_match:
+                            dt = f"{date_match.group(1)} {time_match.group(1)}" if time_match else date_match.group(1)
                             events.append({
-                                "datetime": f"{date_match.group(1)} {time_match.group(1)}",
+                                "datetime": dt,
                                 "title": "アビスパ福岡 ホームゲーム",
                                 "raw_text": row_text
                             })
