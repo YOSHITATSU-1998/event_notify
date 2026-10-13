@@ -196,6 +196,34 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       
+      # ============================================================
+      # 監査ログ生成・成果物保存（ChatGPT照合用）
+      # ============================================================
+      - name: Generate today event audit log
+        id: audit_log
+        run: |
+          echo "🔍 今日のイベント監査ログ生成開始 - $(date)"
+          cd event_notify
+          python -m scripts.audit_today_events
+          echo "✅ 監査ログ生成完了"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TZ: Asia/Tokyo
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Upload audit log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: today-event-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: event_notify/today-event-audit.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Setup Node.js for screenshot
         uses: actions/setup-node@v4
         with:

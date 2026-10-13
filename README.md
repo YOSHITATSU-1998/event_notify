@@ -1,4 +1,4 @@
-# 福岡イベント自動通知システム Ver.4.12.2
+# 福岡イベント自動通知システム Ver.4.13
 
 **公開ポータルURL**: [https://fukuoka-events-calendar.com/portal](https://fukuoka-events-calendar.com/portal)
 
@@ -58,7 +58,8 @@ event_notify/
 │   ├── best_denki_stadium.py  # ベスト電器スタジアム
 │   └── old/               #   旧スクレイパーのアーカイブ
 ├── scripts/
-│   └── refresh_future_events.py  # Supabase更新オーケストレーター
+│   ├── refresh_future_events.py  # Supabase更新オーケストレーター
+│   └── audit_today_events.py     # ChatGPT照合用 監査ログ生成スクリプト (Ver.4.13)
 ├── utils/
 │   ├── parser.py          # 日付・時刻パーサー (split_and_normalize)
 │   └── marinemesse_api.py # マリンメッセ系4会場 CMS API共通モジュール
@@ -536,6 +537,7 @@ CREATE TABLE events (
 | **4.12** | **Gemini APIによる自律型渋滞予測テキスト生成プロトタイプの構築**: 新世代の `google-genai` SDKと `gemini-2.5-flash` モデルへ移行し、Google Search Grounding を統合した自律型渋滞予測テキスト生成フローを検証。GCPサービスアカウント認証を用いてセキュリティ新基準を突破し、140文字制限のための自動リトライ要約ループをプロトタイプ実装。 |
 | **4.12.1** | **有料制限緩和環境での耐久負荷テストおよび自動リトライ堅牢化**: お支払い情報設定によるクォータ制限解放環境下で、ノーウェイト10日分連続耐久テストを実施。API制限（429）発生時の自動待機リトライロジックを実装し、GitHub Actions自動化時のタイムアウト懸念を解消。検索による元データの自律的ファクトチェック・日程ズレの看破能力を実証。 |
 | **4.12.2** | **会場データ照合メンテナンス＆アビスパ福岡スクレイパーUI改修対応**: 全8会場の登録名・URL・実際のHPの照合検証を実施。アビスパ福岡公式HPのテーブル構造（`<table>`）からカード型構造（`<div class="fixture-row">`）へのUI改修に伴い、ベスト電器スタジアムのスクレイパーを刷新・復旧。 |
+| **4.13** | **ChatGPT公式情報照合用 監査ログ（Today Event Audit）生成・Artifact保存システムの実装**: 外部AI（ChatGPT等）による日々の公式情報突合・ログ精査を可能にするため、Actions実行時にポータル公開側と同一条件でSupabaseから当日のイベント一覧を再取得し、機械的抽出マーカー付きJSON（ジョブログ出力）および成果物（`today-event-audit.json`、保持30日）として保存するパイプラインを新設。0件と取得失敗の厳密な区別、撮影処理失敗に影響されない堅牢な配置を実現。 |
 
 ## 📄 ライセンス
 
@@ -547,4 +549,4 @@ YOSHITATSU NAKAHARA (ヨッシー) + Antigravity (Gemini)
 
 ---
 
-**最終更新**: 2026年9月20日 JST
+**最終更新**: 2026年10月14日 JST

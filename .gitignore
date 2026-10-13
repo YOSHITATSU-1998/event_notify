@@ -75,6 +75,7 @@ yarn.lock
 # Generated Files (HTML, Screenshots, etc.)
 # ============================================================
 site/
+today-event-audit.json
 screenshots/*.jpeg
 screenshots/*.jpg
 screenshots/*.png
